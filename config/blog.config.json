@@ -22,11 +22,26 @@
       "illegal activity"
     ]
   },
-  "openai": {
-    "model": "gpt-5.6-terra",
-    "reasoningEffort": "medium",
-    "searchContextSize": "medium",
-    "maxOutputTokens": 16000
+  "localModel": {
+    "provider": "ollama",
+    "model": "qwen3:8b",
+    "baseUrl": "http://127.0.0.1:11434",
+    "temperature": 0.2,
+    "contextWindow": 16384,
+    "maxOutputTokens": 3500,
+    "timeoutMs": 900000
+  },
+  "research": {
+    "discoveryQueries": [
+      "AI automation developer tools",
+      "workflow automation open source AI",
+      "developer productivity AI tools"
+    ],
+    "maxQueries": 4,
+    "maxSearchResultsPerQuery": 4,
+    "maxDocuments": 6,
+    "maxCharsPerDocument": 2200,
+    "requestTimeoutMs": 15000
   },
   "publishing": {
     "dailyPostLimit": 1,

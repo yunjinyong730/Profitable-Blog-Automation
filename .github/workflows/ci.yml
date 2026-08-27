@@ -13,7 +13,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --check src/openai.mjs
+      - run: node --check src/ollama.mjs
+      - run: node --check src/research.mjs
       - run: node --check src/render.mjs
       - run: node --check src/pipeline.mjs
       - run: npm run validate
