@@ -13,9 +13,15 @@ function validHttpUrl(value) {
   }
 }
 
+function nearOne(values) {
+  return Math.abs(values.reduce((sum, value) => sum + value, 0) - 1) < 0.001;
+}
+
 if (!config.site?.baseUrl?.startsWith('https://')) throw new Error('config.site.baseUrl must use HTTPS.');
+if (!config.site?.name?.includes('AI')) throw new Error('site.name must preserve the Practical AI identity.');
 if (config.localModel?.provider !== 'ollama') throw new Error('config.localModel.provider must be ollama.');
 if (!String(config.localModel?.baseUrl || '').startsWith('http://127.0.0.1:')) throw new Error('config.localModel.baseUrl must point to local loopback Ollama.');
+
 const requiredStages = ['topic', 'research', 'draft', 'qa'];
 const stageModels = requiredStages.map((name) => {
   const stage = config.localModel?.stages?.[name];
@@ -25,9 +31,43 @@ const stageModels = requiredStages.map((name) => {
   return stage.model;
 });
 if (new Set(stageModels).size !== stageModels.length) throw new Error('Each pipeline stage must use a distinct model.');
-if (!Number.isInteger(config.content?.minimumQualityScore) || config.content.minimumQualityScore < 80 || config.content.minimumQualityScore > 100) throw new Error('minimumQualityScore must be an integer from 80 to 100.');
-if (!Array.isArray(config.research?.topicPillars) || config.research.topicPillars.length < 6) throw new Error('research.topicPillars must contain at least 6 pillars.');
-if (!Array.isArray(config.research?.intentTemplates) || config.research.intentTemplates.length < 6) throw new Error('research.intentTemplates must contain at least 6 templates.');
+
+if (!Number.isInteger(config.content?.minimumQualityScore) || config.content.minimumQualityScore < 80 || config.content.minimumQualityScore > 100) {
+  throw new Error('minimumQualityScore must be an integer from 80 to 100.');
+}
+
+const segments = config.research?.audienceSegments;
+if (!Array.isArray(segments) || segments.length < 5) throw new Error('research.audienceSegments must contain at least five segments.');
+const segmentIds = segments.map((segment) => segment.id);
+if (new Set(segmentIds).size !== segmentIds.length || segmentIds.some((id) => !id)) throw new Error('research.audienceSegments IDs must be unique and non-empty.');
+for (const segment of segments) {
+  if (!segment.label || !segment.searchPhrase) throw new Error(`Audience segment ${segment.id} needs label and searchPhrase.`);
+  if (!Array.isArray(segment.needs) || segment.needs.length < 3) throw new Error(`Audience segment ${segment.id} needs at least three problem areas.`);
+}
+if (!Array.isArray(config.research?.problemAreas) || config.research.problemAreas.length < 10) throw new Error('research.problemAreas must contain at least 10 broad work/business problems.');
+if (!Array.isArray(config.research?.topicPillars) || config.research.topicPillars.length < 12) throw new Error('research.topicPillars must contain at least 12 pillars.');
+if (!Array.isArray(config.research?.intentTemplates) || config.research.intentTemplates.length < 10) throw new Error('research.intentTemplates must contain at least 10 templates.');
+if (!config.research.intentTemplates.some((template) => template.includes('{segment}'))) throw new Error('At least one intent template must vary by audience segment.');
+if (!config.research.intentTemplates.some((template) => template.includes('{problem}'))) throw new Error('At least one intent template must vary by reader problem.');
+if (!Number.isInteger(config.research.discoveryQueryCount) || config.research.discoveryQueryCount < 8) throw new Error('discoveryQueryCount must be at least 8.');
+
+const portfolio = config.content?.portfolio;
+if (!portfolio || !Number.isInteger(portfolio.balanceWindow) || portfolio.balanceWindow < 10) throw new Error('content.portfolio.balanceWindow must be at least 10.');
+const audienceTargets = portfolio.audienceTargets || {};
+if (!nearOne(Object.values(audienceTargets))) throw new Error('content.portfolio.audienceTargets must sum to 1.');
+if (Object.keys(audienceTargets).some((id) => !segmentIds.includes(id))) throw new Error('Audience target contains an unknown segment ID.');
+if ((audienceTargets.developer || 0) > 0.30) throw new Error('Developer target must stay <= 30% to preserve the broadened audience strategy.');
+const roleTargets = portfolio.contentRoleTargets || {};
+if (!nearOne(Object.values(roleTargets))) throw new Error('content.portfolio.contentRoleTargets must sum to 1.');
+for (const role of ['reach', 'commercial', 'authority']) if (typeof roleTargets[role] !== 'number') throw new Error(`Missing content role target: ${role}.`);
+
+const adPolicy = config.monetization?.adsensePolicy;
+if (!adPolicy) throw new Error('monetization.adsensePolicy is required.');
+for (const key of ['reachPlacements', 'commercialPlacements', 'authorityPlacements']) {
+  if (!Number.isInteger(adPolicy[key]) || adPolicy[key] < 0 || adPolicy[key] > 3) throw new Error(`${key} must be an integer from 0 to 3.`);
+}
+if (adPolicy.reachPlacements < adPolicy.commercialPlacements) throw new Error('Reach pages should not have fewer ads than commercial pages.');
+
 if (!config.publishing?.timezone) throw new Error('config.publishing.timezone is required.');
 if (config.visuals?.commonsPhotos?.enabled) {
   const commons = config.visuals.commonsPhotos;
@@ -54,6 +94,8 @@ for (const post of posts) {
   keywords.add(keyword);
   const urls = new Set((post.sources || []).filter((source) => validHttpUrl(source.url)).map((source) => source.url));
   if (urls.size < 3) throw new Error(`Post ${post.slug} must contain at least 3 unique valid source URLs.`);
+  if (post.audienceSegment && post.audienceSegment !== 'general' && !segmentIds.includes(post.audienceSegment)) throw new Error(`Unknown audience segment for ${post.slug}: ${post.audienceSegment}`);
+  if (post.contentRole && !['reach', 'commercial', 'authority'].includes(post.contentRole)) throw new Error(`Unknown content role for ${post.slug}: ${post.contentRole}`);
   if (post.media) {
     if (post.media.provider !== 'Wikimedia Commons') throw new Error(`Unsupported media provider for ${post.slug}.`);
     if (!String(post.media.localPath || '').startsWith('assets/posts/')) throw new Error(`Invalid local media path for ${post.slug}.`);
@@ -61,4 +103,5 @@ for (const post of posts) {
     if (!post.media.license || !post.media.author) throw new Error(`Missing media attribution for ${post.slug}.`);
   }
 }
-console.log(`Configuration valid: ${stageModels.join(' -> ')}; Commons licensing guard enabled; ${posts.length} posts, ${queue.length} queued topics.`);
+
+console.log(`Configuration valid: ${stageModels.join(' -> ')}; ${segments.length} audience segments; portfolio balancing + role-aware AdSense enabled; ${posts.length} posts, ${queue.length} queued topics.`);
