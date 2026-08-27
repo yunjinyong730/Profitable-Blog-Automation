@@ -12,22 +12,56 @@
     "minimumQualityScore": 85,
     "recentTitleWindow": 40,
     "maxPostsOnIndex": 60,
-    "disallowedTopics": ["medical diagnosis or treatment","personalized legal advice","personalized investment or trading advice","gambling","adult content","weapons","illegal activity"]
+    "disallowedTopics": [
+      "medical diagnosis or treatment",
+      "personalized legal advice",
+      "personalized investment or trading advice",
+      "gambling",
+      "adult content",
+      "weapons",
+      "illegal activity"
+    ]
   },
   "localModel": {
     "provider": "ollama",
     "baseUrl": "http://127.0.0.1:11434",
     "cleanupAfterStage": true,
     "stages": {
-      "topic": {"model":"qwen3:1.7b","temperature":0.1,"contextWindow":8192,"maxOutputTokens":1400,"timeoutMs":600000},
-      "research": {"model":"qwen3:4b","temperature":0.1,"contextWindow":12288,"maxOutputTokens":2200,"timeoutMs":900000},
-      "draft": {"model":"qwen3:8b","temperature":0.2,"contextWindow":16384,"maxOutputTokens":3600,"timeoutMs":1200000},
-      "qa": {"model":"gemma3:4b","temperature":0.0,"contextWindow":12288,"maxOutputTokens":3200,"timeoutMs":900000}
+      "topic": {"model": "qwen3:1.7b", "temperature": 0.1, "contextWindow": 8192, "maxOutputTokens": 1400, "timeoutMs": 600000},
+      "research": {"model": "qwen3:4b", "temperature": 0.1, "contextWindow": 12288, "maxOutputTokens": 2200, "timeoutMs": 900000},
+      "draft": {"model": "qwen3:8b", "temperature": 0.2, "contextWindow": 16384, "maxOutputTokens": 3600, "timeoutMs": 1200000},
+      "qa": {"model": "gemma3:4b", "temperature": 0.0, "contextWindow": 12288, "maxOutputTokens": 3300, "timeoutMs": 900000}
     }
   },
   "research": {
-    "topicPillars": ["AI automation","developer productivity","open source AI","local LLM","AI agents","workflow orchestration","AI coding tools","RAG and knowledge systems","self-hosted AI","no-code and low-code automation","developer infrastructure","AI security and privacy"],
-    "intentTemplates": ["{pillar} comparison 2026","best {pillar} tools 2026","{pillar} alternatives","{pillar} how to","{pillar} open source","{pillar} cost pricing","{pillar} best practices","{pillar} migration","{pillar} security privacy","{pillar} new release","{pillar} benchmark","{pillar} for small teams"],
+    "topicPillars": [
+      "AI automation",
+      "developer productivity",
+      "open source AI",
+      "local LLM",
+      "AI agents",
+      "workflow orchestration",
+      "AI coding tools",
+      "RAG and knowledge systems",
+      "self-hosted AI",
+      "no-code and low-code automation",
+      "developer infrastructure",
+      "AI security and privacy"
+    ],
+    "intentTemplates": [
+      "{pillar} comparison 2026",
+      "best {pillar} tools 2026",
+      "{pillar} alternatives",
+      "{pillar} how to",
+      "{pillar} open source",
+      "{pillar} cost pricing",
+      "{pillar} best practices",
+      "{pillar} migration",
+      "{pillar} security privacy",
+      "{pillar} new release",
+      "{pillar} benchmark",
+      "{pillar} for small teams"
+    ],
     "discoveryQueryCount": 8,
     "candidateCount": 6,
     "maxQueries": 8,
@@ -36,6 +70,19 @@
     "maxCharsPerDocument": 2400,
     "requestTimeoutMs": 15000
   },
-  "publishing": {"dailyPostLimit":1,"timezone":"Asia/Seoul"},
-  "visuals": {"enabled":true,"generateCover":true,"generateSummary":true}
+  "publishing": {"dailyPostLimit": 1, "timezone": "Asia/Seoul"},
+  "visuals": {
+    "enabled": true,
+    "generateCover": true,
+    "generateSummary": true,
+    "commonsPhotos": {
+      "enabled": true,
+      "onlyWhenNeeded": true,
+      "maxSearchResults": 8,
+      "thumbWidth": 1200,
+      "maxBytes": 3500000,
+      "requestTimeoutMs": 20000,
+      "allowedLicenseFamilies": ["CC0", "Public domain", "CC BY", "CC BY-SA"]
+    }
+  }
 }
