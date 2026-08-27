@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://yunjinyong730.github.io/Profitable-Blog-Automation/sitemap.xml

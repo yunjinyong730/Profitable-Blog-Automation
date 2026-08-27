@@ -1,0 +1,60 @@
+name: Automated Blog Publisher
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: Optional topic override
+        required: false
+        type: string
+  schedule:
+    - cron: '30 22 * * *' # 07:30 Asia/Seoul
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: blog-publisher
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate repository
+        run: npm run validate
+      - name: Research, verify, and generate one article
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          BLOG_TOPIC: ${{ inputs.topic }}
+          ADSENSE_CLIENT: ${{ secrets.ADSENSE_CLIENT }}
+          ADSENSE_SLOT: ${{ secrets.ADSENSE_SLOT }}
+          AFFILIATE_LINKS_JSON: ${{ secrets.AFFILIATE_LINKS_JSON }}
+          AFFILIATE_DISCLOSURE: ${{ vars.AFFILIATE_DISCLOSURE }}
+        run: npm run publish:blog
+      - name: Commit generated content
+        run: |
+          git config user.name "blog-automation[bot]"
+          git config user.email "blog-automation[bot]@users.noreply.github.com"
+          git add public data
+          if git diff --cached --quiet; then
+            echo "No generated changes."
+            exit 0
+          fi
+          git commit -m "chore(blog): publish automated article"
+          git push
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - id: deployment
+        uses: actions/deploy-pages@v4
+        with:
+          token: ${{ github.token }}
