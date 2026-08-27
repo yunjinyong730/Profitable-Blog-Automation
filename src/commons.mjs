@@ -102,7 +102,7 @@ function normalizeCandidate(page, options) {
   if (restrictions && !/^none$/i.test(restrictions)) return null;
   const author = (metaValue(ext, 'Artist') || metaValue(ext, 'Credit')).slice(0, 500);
   const attributionRequired = /true|yes|1/i.test(metaValue(ext, 'AttributionRequired'));
-  if (attributionRequired && !author) return null;
+  if (!author) return null;
   const sourcePageUrl = safeCommonsUrl(info.descriptionurl, ['commons.wikimedia.org']);
   const originalFileUrl = safeCommonsUrl(info.url, ['upload.wikimedia.org']);
   const thumbUrl = safeCommonsUrl(info.thumburl, ['upload.wikimedia.org']);
@@ -112,11 +112,12 @@ function normalizeCandidate(page, options) {
     'www.gnu.org',
     'commons.wikimedia.org'
   ]);
+  if (!licenseUrl && !/public domain/i.test(license)) return null;
   return {
     provider: 'Wikimedia Commons',
     title: String(page.title || '').replace(/^File:/, ''),
     description: metaValue(ext, 'ImageDescription').slice(0, 700),
-    author: author || '저자 정보는 원본 페이지 참조',
+    author,
     license,
     licenseUrl,
     attributionRequired,
