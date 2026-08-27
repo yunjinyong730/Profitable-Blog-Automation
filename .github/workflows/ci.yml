@@ -20,6 +20,7 @@ jobs:
       - run: node --check src/render.mjs
       - run: node --check src/pipeline.mjs
       - run: node scripts/test-ollama-transport.mjs
+      - run: node scripts/test-ollama-depth-repair.mjs
       - run: node scripts/test-commons-policy.mjs
       - run: node scripts/test-discovery-policy.mjs
       - run: node scripts/test-render-policy.mjs
