@@ -14,8 +14,11 @@ function validHttpUrl(value) {
 }
 
 if (!config.site?.baseUrl?.startsWith('https://')) throw new Error('config.site.baseUrl must use HTTPS.');
-if (!config.openai?.model) throw new Error('config.openai.model is required.');
+if (config.localModel?.provider !== 'ollama') throw new Error('config.localModel.provider must be ollama.');
+if (!config.localModel?.model) throw new Error('config.localModel.model is required.');
+if (!String(config.localModel?.baseUrl || '').startsWith('http://127.0.0.1:')) throw new Error('config.localModel.baseUrl must point to local loopback Ollama.');
 if (!Number.isInteger(config.content?.minimumQualityScore) || config.content.minimumQualityScore < 70 || config.content.minimumQualityScore > 100) throw new Error('minimumQualityScore must be an integer from 70 to 100.');
+if (!Array.isArray(config.research?.discoveryQueries) || config.research.discoveryQueries.length < 1) throw new Error('research.discoveryQueries must contain at least one query.');
 if (!config.publishing?.timezone) throw new Error('config.publishing.timezone is required.');
 if (!Array.isArray(posts)) throw new Error('data/posts.json must contain an array.');
 if (!Array.isArray(queue)) throw new Error('data/topic-queue.json must contain an array.');
@@ -26,15 +29,12 @@ const keywords = new Set();
 for (const post of posts) {
   if (!post.slug || slugs.has(post.slug)) throw new Error(`Invalid/duplicate post slug: ${post.slug}`);
   slugs.add(post.slug);
-
   const title = String(post.title || '').trim().toLowerCase();
   if (!title || titles.has(title)) throw new Error(`Invalid/duplicate post title: ${post.title}`);
   titles.add(title);
-
   const keyword = String(post.primaryKeyword || '').trim().toLowerCase();
   if (!keyword || keywords.has(keyword)) throw new Error(`Invalid/duplicate primary keyword: ${post.primaryKeyword}`);
   keywords.add(keyword);
-
   const urls = new Set((post.sources || []).filter((source) => validHttpUrl(source.url)).map((source) => source.url));
   if (urls.size < 3) throw new Error(`Post ${post.slug} must contain at least 3 unique valid source URLs.`);
 }
