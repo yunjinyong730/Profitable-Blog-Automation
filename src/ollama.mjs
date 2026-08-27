@@ -1,6 +1,11 @@
 import http from 'node:http';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const MAX_STRUCTURED_ATTEMPTS = 3;
+const DRAFT_MIN_PARAGRAPH_CHARS = 3000;
+const DRAFT_TARGET_PARAGRAPH_CHARS = 3800;
+const QA_MIN_PARAGRAPH_CHARS = 3500;
+const QA_TARGET_PARAGRAPH_CHARS = 4200;
 
 function assertShape(schema, value, path = '$') {
   if (!schema || typeof schema !== 'object') return;
@@ -19,6 +24,40 @@ function assertShape(schema, value, path = '$') {
 }
 
 const cleanBase = (baseUrl) => baseUrl.replace(/\/$/, '');
+
+function paragraphChars(sections) {
+  return (sections || [])
+    .flatMap((section) => section?.paragraphs || [])
+    .join('')
+    .length;
+}
+
+function articleDepthPolicy(schema) {
+  const properties = schema?.properties || {};
+  if (properties.revisedSections) {
+    return {
+      field: 'revisedSections',
+      label: 'final QA article',
+      minimum: QA_MIN_PARAGRAPH_CHARS,
+      target: QA_TARGET_PARAGRAPH_CHARS,
+      repairMaxOutputTokens: 5200
+    };
+  }
+  if (properties.sections && properties.title && properties.slug) {
+    return {
+      field: 'sections',
+      label: 'draft article',
+      minimum: DRAFT_MIN_PARAGRAPH_CHARS,
+      target: DRAFT_TARGET_PARAGRAPH_CHARS,
+      repairMaxOutputTokens: 4800
+    };
+  }
+  return null;
+}
+
+function depthRepairInstruction(policy, actualChars) {
+  return `The previous JSON response is structurally valid but the ${policy.label} is too short (${actualChars} paragraph characters). Regenerate the COMPLETE JSON object, not a patch. Preserve only claims and URLs supported by the original input. Expand the article sections to at least ${policy.target} Korean paragraph characters by adding evidence-grounded explanations, concrete actionable steps, decision criteria, trade-offs, limitations, failure modes, and context that genuinely help the target reader. Do not add filler, repetition, invented facts, invented examples, new URLs, fake precision, or personal experience. Keep the same factual conclusions unless the supplied evidence requires a correction.`;
+}
 
 function localHttpJson({ url, method = 'GET', body = null, timeoutMs = 30_000, maxBytes = 24 * 1024 * 1024 }) {
   const target = new URL(url);
@@ -159,6 +198,8 @@ export async function structuredResponse({
   timeoutMs = 900000
 }) {
   const started = Date.now();
+  const depthPolicy = articleDepthPolicy(schema);
+  let depthRepairRequested = false;
   const body = {
     model,
     stream: false,
@@ -173,9 +214,9 @@ export async function structuredResponse({
   };
 
   let lastError;
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  for (let attempt = 1; attempt <= MAX_STRUCTURED_ATTEMPTS; attempt += 1) {
     const attemptStarted = Date.now();
-    console.log(`[model] ${model} generating (attempt ${attempt}/2, timeout ${Math.round(timeoutMs / 60_000)}m) ...`);
+    console.log(`[model] ${model} generating (attempt ${attempt}/${MAX_STRUCTURED_ATTEMPTS}, timeout ${Math.round(timeoutMs / 60_000)}m) ...`);
     const heartbeat = setInterval(() => {
       const elapsed = Math.round((Date.now() - attemptStarted) / 1000);
       console.log(`[model] ${model} still generating ... ${elapsed}s elapsed`);
@@ -196,6 +237,27 @@ export async function structuredResponse({
       if (!text) throw new Error('Ollama response contained no message content.');
       const data = JSON.parse(text);
       assertShape(schema, data);
+
+      if (depthPolicy) {
+        const chars = paragraphChars(data[depthPolicy.field]);
+        console.log(`[quality] ${depthPolicy.label} depth=${chars} paragraph chars (minimum ${depthPolicy.minimum})`);
+        if (chars < depthPolicy.minimum) {
+          if (depthRepairRequested) {
+            const error = new Error(`${depthPolicy.label} remained too thin after automatic depth repair (${chars} < ${depthPolicy.minimum} paragraph chars).`);
+            error.code = 'ARTICLE_DEPTH_SHORT';
+            throw error;
+          }
+          depthRepairRequested = true;
+          console.warn(`[quality] ${depthPolicy.label} is too thin; requesting one evidence-grounded depth repair before releasing the model.`);
+          body.messages.push(
+            { role: 'assistant', content: text },
+            { role: 'user', content: depthRepairInstruction(depthPolicy, chars) }
+          );
+          body.options.num_predict = Math.max(body.options.num_predict, depthPolicy.repairMaxOutputTokens);
+          continue;
+        }
+      }
+
       const seconds = Math.round((Date.now() - started) / 1000);
       console.log(`[model] ${model} completed in ${seconds}s (${payload.eval_count || '?'} output tokens)`);
       return {
@@ -210,7 +272,7 @@ export async function structuredResponse({
       lastError = error;
       const elapsed = Math.round((Date.now() - attemptStarted) / 1000);
       console.warn(`[model] ${model} attempt ${attempt} failed after ${elapsed}s: ${error.code || error.name || 'Error'} ${error.message}`);
-      if (error.code === 'OLLAMA_REQUEST_TIMEOUT' || attempt === 2) break;
+      if (error.code === 'OLLAMA_REQUEST_TIMEOUT' || error.code === 'ARTICLE_DEPTH_SHORT' || attempt === MAX_STRUCTURED_ATTEMPTS) break;
       const healthy = await ollamaHealthy(baseUrl);
       console.warn(`[model] Ollama health before retry: ${healthy ? 'ok' : 'unavailable'}`);
       if (!healthy) throw error;
