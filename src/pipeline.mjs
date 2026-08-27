@@ -9,7 +9,11 @@ const config = await readJson('config/blog.config.json');
 const posts = await readJson('data/posts.json');
 const queue = await readJson('data/topic-queue.json');
 const apiKey = process.env.OPENAI_API_KEY;
-const today = new Date().toISOString().slice(0, 10);
+const timezone = config.publishing?.timezone || 'Asia/Seoul';
+const today = new Intl.DateTimeFormat('en-CA', {
+  timeZone: timezone,
+  year: 'numeric', month: '2-digit', day: '2-digit'
+}).format(new Date());
 const manualTopic = (process.env.BLOG_TOPIC || '').trim();
 
 const monetization = {
@@ -90,6 +94,21 @@ function duplicateKeyword(keyword) {
   const normalized = String(keyword).trim().toLowerCase();
   return posts.some((post) => String(post.primaryKeyword || '').trim().toLowerCase() === normalized);
 }
+function duplicateTitle(title) {
+  const normalized = String(title).trim().toLowerCase();
+  return posts.some((post) => String(post.title || '').trim().toLowerCase() === normalized);
+}
+function uniqueValidSources(sources) {
+  const seen = new Set();
+  const result = [];
+  for (const source of sources || []) {
+    const url = safeUrl(source.url);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    result.push({ ...source, url });
+  }
+  return result;
+}
 
 async function chooseTopic() {
   if (manualTopic) return { topic: manualTopic, primaryKeyword: manualTopic, searchIntent: 'manual', monetizationAngle: 'manual', whyNow: 'manual workflow dispatch', opportunityScore: 100 };
@@ -105,8 +124,9 @@ async function chooseTopic() {
 
 async function researchTopic(topic) {
   const { data } = await ai({ name: 'research_brief', schema: researchSchema, webSearch: true, instructions: 'Research the topic using current, reputable sources. Prefer official documentation, original research, standards bodies, government sources, and first-party product documentation. Do not invent claims, prices, dates, benchmarks, or experience. Focus on facts that materially help a practitioner make a decision.', input: `Date: ${today}\nTopic: ${JSON.stringify(topic)}\nAudience: ${config.content.audience}\nCreate a research brief with source URLs for every key fact and identify a content gap this article can genuinely fill.` });
-  data.keyFacts = data.keyFacts.filter((fact) => safeUrl(fact.sourceUrl));
-  if (data.keyFacts.length < 3) throw new Error('Research did not return enough valid HTTP(S) sources.');
+  data.keyFacts = data.keyFacts.map((fact) => ({ ...fact, sourceUrl: safeUrl(fact.sourceUrl) })).filter((fact) => fact.sourceUrl);
+  const uniqueResearchUrls = new Set(data.keyFacts.map((fact) => fact.sourceUrl));
+  if (uniqueResearchUrls.size < 3) throw new Error('Research did not return at least 3 unique valid HTTP(S) sources.');
   return data;
 }
 
@@ -117,7 +137,7 @@ async function writeArticle(topic, research) {
 
 async function qualityCheck(topic, research, article) {
   const { data } = await ai({ name: 'quality_review', schema: qaSchema, webSearch: true, instructions: 'Act as an independent senior editor and fact checker. Re-check time-sensitive or consequential claims with web search. Correct unsupported claims, fake precision, stale product details, weak explanations, SEO padding, and misleading monetization. Preserve useful depth. approved may be true only if the final article is factually defensible, genuinely useful, and safe. verifiedSources must include only reputable HTTP(S) sources you actually used to verify the final content.', input: `Date: ${today}\nMinimum passing score: ${config.content.minimumQualityScore}\nTopic: ${JSON.stringify(topic)}\nResearch: ${JSON.stringify(research)}\nDraft: ${JSON.stringify(article)}` });
-  data.verifiedSources = data.verifiedSources.filter((source) => safeUrl(source.url));
+  data.verifiedSources = uniqueValidSources(data.verifiedSources);
   return data;
 }
 
@@ -131,10 +151,11 @@ const article = await writeArticle(topic, research);
 const qa = await qualityCheck(topic, research, article);
 console.log(`QA: ${qa.score}/100, approved=${qa.approved}`);
 if (!qa.approved || qa.score < config.content.minimumQualityScore) throw new Error(`Quality gate failed: ${qa.score}/100. ${qa.warnings.join(' | ')}`);
-if (qa.verifiedSources.length < 3) throw new Error('Quality review returned fewer than 3 valid sources.');
+if (qa.verifiedSources.length < 3) throw new Error('Quality review returned fewer than 3 unique valid sources.');
+if (duplicateTitle(qa.revisedTitle)) throw new Error(`Duplicate article title: ${qa.revisedTitle}`);
 let slug = slugify(article.slug || qa.revisedTitle);
 if (!slug) slug = `article-${today}`;
-if (posts.some((post) => post.slug === slug)) slug = `${slug}-${today.replaceAll('-', '')}`;
+if (posts.some((post) => post.slug === slug)) throw new Error(`Duplicate slug: ${slug}`);
 const record = { title: qa.revisedTitle, slug, description: qa.revisedDescription, category: article.category, tags: article.tags, date: today, primaryKeyword: topic.primaryKeyword, opportunityScore: topic.opportunityScore, qualityScore: qa.score, verificationSummary: qa.verificationSummary, sources: qa.verifiedSources };
 const nextPosts = [record, ...posts];
 await writeFile(path.join(ROOT, 'public', 'posts', `${slug}.html`), renderArticle({ config, article, qa, monetization, date: today, slug }));

@@ -22,7 +22,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - uses: actions/setup-node@v4
@@ -33,12 +33,18 @@ jobs:
       - name: Research, verify, and generate one article
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          BLOG_TOPIC: ${{ inputs.topic }}
+          BLOG_TOPIC: ${{ github.event.inputs.topic || '' }}
           ADSENSE_CLIENT: ${{ secrets.ADSENSE_CLIENT }}
           ADSENSE_SLOT: ${{ secrets.ADSENSE_SLOT }}
           AFFILIATE_LINKS_JSON: ${{ secrets.AFFILIATE_LINKS_JSON }}
           AFFILIATE_DISCLOSURE: ${{ vars.AFFILIATE_DISCLOSURE }}
-        run: npm run publish:blog
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "OPENAI_API_KEY repository secret is required."
+            exit 1
+          fi
+          npm run publish:blog
+          npm run validate
       - name: Commit generated content
         run: |
           git config user.name "blog-automation[bot]"
@@ -51,7 +57,7 @@ jobs:
           git commit -m "chore(blog): publish automated article"
           git push
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: public
       - id: deployment
