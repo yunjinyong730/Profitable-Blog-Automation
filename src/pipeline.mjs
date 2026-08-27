@@ -21,11 +21,16 @@ const today = new Intl.DateTimeFormat('en-CA', {
 const manualTopic = (process.env.BLOG_TOPIC || '').trim();
 const baseUrl = (process.env.OLLAMA_BASE_URL || config.localModel.baseUrl).trim();
 const researchOptions = config.research || {};
+const audienceSegments = researchOptions.audienceSegments || [];
+const audienceIds = audienceSegments.map((segment) => segment.id);
+const contentRoles = ['reach', 'commercial', 'authority'];
+const monetizationRoutes = ['adsense', 'affiliate', 'digital-product', 'lead', 'mixed', 'none'];
 
 const monetization = {
   adsense: {
     client: (process.env.ADSENSE_CLIENT || '').trim(),
-    slot: (process.env.ADSENSE_SLOT || '').trim()
+    slot: (process.env.ADSENSE_SLOT || '').trim(),
+    midSlot: (process.env.ADSENSE_SLOT_MID || process.env.ADSENSE_SLOT || '').trim()
   },
   affiliateLinks: (() => {
     try { return JSON.parse(process.env.AFFILIATE_LINKS_JSON || '[]'); }
@@ -37,7 +42,9 @@ const monetization = {
 
 const scoreFields = {
   trafficPotential: { type: 'integer', minimum: 0, maximum: 100 },
+  audienceBreadth: { type: 'integer', minimum: 0, maximum: 100 },
   intentStrength: { type: 'integer', minimum: 0, maximum: 100 },
+  evergreenValue: { type: 'integer', minimum: 0, maximum: 100 },
   freshness: { type: 'integer', minimum: 0, maximum: 100 },
   evidenceCoverage: { type: 'integer', minimum: 0, maximum: 100 },
   monetizationFit: { type: 'integer', minimum: 0, maximum: 100 },
@@ -50,18 +57,27 @@ const topicCandidateSchema = {
   properties: {
     topic: { type: 'string' },
     primaryKeyword: { type: 'string' },
+    audienceSegment: { type: 'string' },
+    contentRole: { type: 'string' },
+    monetizationRoute: { type: 'string' },
+    readerProblem: { type: 'string' },
+    expectedOutcome: { type: 'string' },
     searchIntent: { type: 'string' },
     monetizationAngle: { type: 'string' },
     whyNow: { type: 'string' },
     ...scoreFields
   },
-  required: ['topic', 'primaryKeyword', 'searchIntent', 'monetizationAngle', 'whyNow', ...Object.keys(scoreFields)]
+  required: [
+    'topic', 'primaryKeyword', 'audienceSegment', 'contentRole', 'monetizationRoute',
+    'readerProblem', 'expectedOutcome', 'searchIntent', 'monetizationAngle', 'whyNow',
+    ...Object.keys(scoreFields)
+  ]
 };
 
 const topicSchema = {
   type: 'object',
   additionalProperties: false,
-  properties: { candidates: { type: 'array', minItems: 4, maxItems: 8, items: topicCandidateSchema } },
+  properties: { candidates: { type: 'array', minItems: 5, maxItems: 10, items: topicCandidateSchema } },
   required: ['candidates']
 };
 
@@ -196,9 +212,59 @@ function duplicateTitle(title) {
   const n = norm(title);
   return posts.some((p) => norm(p.title) === n);
 }
-function weightedTopicScore(c) {
-  return Math.round(c.trafficPotential * 0.30 + c.intentStrength * 0.20 + c.freshness * 0.15 +
-    c.evidenceCoverage * 0.15 + c.monetizationFit * 0.10 + c.competitionOpportunity * 0.10);
+
+function audienceLabel(id) {
+  return audienceSegments.find((segment) => segment.id === id)?.label || id || '일반 독자';
+}
+
+function audiencePrompt(id) {
+  const segment = audienceSegments.find((item) => item.id === id);
+  if (!segment) return '일반 독자가 이해할 수 있는 평이한 한국어를 사용하고 전문용어는 필요한 경우 설명한다.';
+  if (id === 'developer') {
+    return '개발자·AI 실무자를 대상으로 한다. 구현 세부사항, 제약조건, 보안·운영 trade-off를 충분히 다루되 불필요한 전문용어 과시는 피한다.';
+  }
+  return `${segment.label}가 대상이다. 코딩 지식을 전제로 하지 말고, 전문용어를 쉽게 풀어 설명하며 실제 업무에서 바로 따라 할 수 있는 단계와 시간·비용 절감 관점을 우선한다.`;
+}
+
+function weightedTopicScore(candidate) {
+  return Math.round(
+    candidate.trafficPotential * 0.22 +
+    candidate.audienceBreadth * 0.13 +
+    candidate.intentStrength * 0.16 +
+    candidate.evergreenValue * 0.12 +
+    candidate.freshness * 0.08 +
+    candidate.evidenceCoverage * 0.12 +
+    candidate.monetizationFit * 0.10 +
+    candidate.competitionOpportunity * 0.07
+  );
+}
+
+function observedShare(field, value, windowSize) {
+  const recent = posts.slice(0, windowSize).filter((post) => post[field]);
+  if (!recent.length) return 0;
+  return recent.filter((post) => post[field] === value).length / recent.length;
+}
+
+function targetBalanceBonus(field, value, targets, windowSize, maxBonus) {
+  if (!targets || typeof targets[value] !== 'number') return 0;
+  const recentWithField = posts.slice(0, windowSize).filter((post) => post[field]);
+  if (!recentWithField.length) return 0;
+  const gap = targets[value] - observedShare(field, value, windowSize);
+  return Math.round(Math.max(-maxBonus, Math.min(maxBonus, gap * 40)));
+}
+
+function portfolioAdjustedScore(candidate) {
+  const portfolio = config.content.portfolio || {};
+  const windowSize = portfolio.balanceWindow || 30;
+  const segmentBonus = targetBalanceBonus('audienceSegment', candidate.audienceSegment, portfolio.audienceTargets, windowSize, 8);
+  const roleBonus = targetBalanceBonus('contentRole', candidate.contentRole, portfolio.contentRoleTargets, windowSize, 6);
+  return Math.max(0, Math.min(100, weightedTopicScore(candidate) + segmentBonus + roleBonus));
+}
+
+function validCandidate(candidate) {
+  return audienceIds.includes(candidate.audienceSegment) &&
+    contentRoles.includes(candidate.contentRole) &&
+    monetizationRoutes.includes(candidate.monetizationRoute);
 }
 
 function whitelistSources(items, sourceMap) {
@@ -214,50 +280,86 @@ function whitelistSources(items, sourceMap) {
   return out;
 }
 
+function manualTopicRecord(value, reason) {
+  return {
+    topic: value,
+    primaryKeyword: value,
+    audienceSegment: 'general',
+    contentRole: 'authority',
+    monetizationRoute: 'none',
+    readerProblem: value,
+    expectedOutcome: '수동으로 지정한 주제에 대한 실용적인 답을 제공한다.',
+    searchIntent: reason,
+    monetizationAngle: 'manual',
+    whyNow: reason,
+    opportunityScore: 100
+  };
+}
+
 async function chooseTopic() {
-  if (manualTopic) {
-    return { topic: manualTopic, primaryKeyword: manualTopic, searchIntent: 'manual', monetizationAngle: 'manual', whyNow: 'manual workflow dispatch', opportunityScore: 100 };
-  }
+  if (manualTopic) return manualTopicRecord(manualTopic, 'manual workflow dispatch');
   if (queue.length) {
-    const q = queue.shift();
-    if (typeof q === 'string') return { topic: q, primaryKeyword: q, searchIntent: 'queued', monetizationAngle: 'queued', whyNow: 'topic queue', opportunityScore: 100 };
-    return q;
+    const queued = queue.shift();
+    if (typeof queued === 'string') return manualTopicRecord(queued, 'topic queue');
+    return {
+      audienceSegment: 'general',
+      contentRole: 'authority',
+      monetizationRoute: 'none',
+      readerProblem: queued.topic || queued.primaryKeyword || 'queued topic',
+      expectedOutcome: '큐에 지정된 주제를 실용적으로 설명한다.',
+      opportunityScore: 100,
+      ...queued
+    };
   }
+
   const queries = buildDiscoveryQueries(researchOptions, today);
   console.log(`[topic] discovery queries: ${queries.join(' | ')}`);
-  const docs = await collectEvidence(queries, { ...researchOptions, maxDocuments: Math.max(8, researchOptions.maxDocuments || 8) });
+  const docs = await collectEvidence(queries, { ...researchOptions, maxDocuments: Math.max(10, researchOptions.maxDocuments || 10) });
   if (docs.length < 4) throw new Error(`Topic discovery found only ${docs.length} usable public sources.`);
-  const recent = posts.slice(0, config.content.recentTitleWindow).map((p) => ({ title: p.title, keyword: p.primaryKeyword }));
+
+  const recent = posts.slice(0, config.content.recentTitleWindow).map((post) => ({
+    title: post.title,
+    keyword: post.primaryKeyword,
+    audienceSegment: post.audienceSegment || 'legacy',
+    contentRole: post.contentRole || 'legacy'
+  }));
+  const segmentCatalog = audienceSegments.map(({ id, label, searchPhrase }) => ({ id, label, searchPhrase }));
   const { data } = await runStage('topic', (ai) => ai({
     schema: topicSchema,
-    instructions: 'You are a search-demand opportunity analyst for a Korean technology publication. Generate diverse candidate topics only from supplied evidence. Favor topics likely to attract organic traffic: strong problem-solving intent, comparisons, alternatives, setup/how-to, cost/ROI, migration, security/privacy, new releases with lasting utility, and evergreen implementation questions. Avoid generic news summaries, hype, keyword stuffing, and YMYL. Scores are estimates from the evidence, not fabricated search-volume numbers.',
-    input: `Date: ${today}\nNiche: ${config.content.niche}\nAudience: ${config.content.audience}\nRecent posts to avoid: ${JSON.stringify(recent)}\nReturn ${config.research.candidateCount || 6} genuinely distinct candidates.\n\nPUBLIC EVIDENCE:\n${evidenceForPrompt(docs)}`
+    instructions: `You are a search-demand opportunity analyst for a broad Korean Practical AI & Automation publication. Generate diverse candidates only from supplied public evidence. The publication serves office/knowledge workers, small business owners, freelancers/solo operators, content creators, and developers/AI practitioners. Do not collapse everything into developer tooling. Favor real problems where AI or automation can save time, reduce repetitive work, lower costs, improve customer workflows, or support a concrete software decision. Include a healthy mix of reach topics (broad informational demand), commercial topics (comparison/alternatives/pricing/tool selection), and authority topics (deeper implementation/security/architecture). Never fabricate search volume. Scores are qualitative estimates from evidence. Avoid generic news summaries, hype, thin listicles, YMYL, and topics unrelated to practical AI/automation.`,
+    input: `Date: ${today}\nNiche: ${config.content.niche}\nAudience segments: ${JSON.stringify(segmentCatalog)}\nPortfolio targets: ${JSON.stringify(config.content.portfolio)}\nRecent posts to avoid/rebalance: ${JSON.stringify(recent)}\nAllowed audienceSegment IDs: ${audienceIds.join(', ')}\nAllowed contentRole values: ${contentRoles.join(', ')}\nAllowed monetizationRoute values: ${monetizationRoutes.join(', ')}\nReturn ${config.research.candidateCount || 8} genuinely distinct candidates across multiple audience segments.\n\nPUBLIC EVIDENCE:\n${evidenceForPrompt(docs)}`
   }));
+
   const ranked = (data.candidates || [])
-    .filter((c) => !tooSimilar(c) && !duplicateKeyword(c.primaryKeyword))
-    .map((c) => ({ ...c, opportunityScore: weightedTopicScore(c) }))
+    .filter((candidate) => validCandidate(candidate) && !tooSimilar(candidate) && !duplicateKeyword(candidate.primaryKeyword))
+    .map((candidate) => ({ ...candidate, opportunityScore: portfolioAdjustedScore(candidate) }))
     .sort((a, b) => b.opportunityScore - a.opportunityScore);
-  if (!ranked.length) throw new Error('All discovered topic candidates were too similar to recent content.');
+  if (!ranked.length) throw new Error('All discovered topic candidates were invalid or too similar to recent content.');
   console.log('[topic] ranked candidates:');
-  ranked.forEach((c, i) => console.log(`  ${i + 1}. ${c.primaryKeyword} = ${c.opportunityScore}/100`));
+  ranked.forEach((candidate, index) => console.log(
+    `  ${index + 1}. ${candidate.primaryKeyword} = ${candidate.opportunityScore}/100 · ${candidate.audienceSegment} · ${candidate.contentRole}`));
   return ranked[0];
 }
 
 async function researchTopic(topic) {
+  const segment = audienceSegments.find((item) => item.id === topic.audienceSegment);
+  const segmentPhrase = segment?.searchPhrase || topic.audienceSegment || 'practical users';
   const queries = [
     topic.primaryKeyword,
+    `${topic.primaryKeyword} ${segmentPhrase}`,
     `${topic.primaryKeyword} official documentation`,
-    `${topic.topic} implementation comparison`,
-    `${topic.primaryKeyword} limitations security`
+    `${topic.topic} comparison pricing`,
+    `${topic.primaryKeyword} limitations privacy security`
   ];
   const documents = await collectEvidence(queries, researchOptions);
   if (documents.length < 3) throw new Error(`Research found only ${documents.length} usable public sources; refusing to publish.`);
   const sourceMap = allowedSourceMap(documents);
   const { data } = await runStage('research', (ai) => ai({
     schema: researchSchema,
-    instructions: 'Create a rigorous research brief using only supplied evidence. Never invent URLs, claims, prices, dates, benchmarks, or personal experience. Every keyFact.sourceUrl must exactly match a supplied URL. Prefer first-party/project documentation for facts; use community sources for context and caveats. Explicitly identify uncertainty.',
-    input: `Date: ${today}\nTopic: ${JSON.stringify(topic)}\nAudience: ${config.content.audience}\n\nPUBLIC EVIDENCE:\n${evidenceForPrompt(documents)}`
+    instructions: 'Create a rigorous research brief using only supplied evidence. Never invent URLs, claims, prices, dates, benchmarks, or personal experience. Every keyFact.sourceUrl must exactly match a supplied URL. Prefer first-party/project documentation for facts. Use community sources mainly for context and caveats. Explicitly identify uncertainty and focus on the target reader problem rather than generic product descriptions.',
+    input: `Date: ${today}\nTopic: ${JSON.stringify(topic)}\nTarget audience: ${audienceLabel(topic.audienceSegment)}\nReader guidance: ${audiencePrompt(topic.audienceSegment)}\n\nPUBLIC EVIDENCE:\n${evidenceForPrompt(documents)}`
   }));
+
   const facts = [];
   const urls = new Set();
   for (const fact of data.keyFacts || []) {
@@ -274,8 +376,8 @@ async function researchTopic(topic) {
 async function writeArticle(topic, research) {
   const { data } = await runStage('draft', (ai) => ai({
     schema: articleSchema,
-    instructions: 'Write a high-quality Korean practitioner article grounded only in the supplied research brief. Preserve factual uncertainty. Add concrete implementation steps, tradeoffs, failure modes, decision criteria, and supported examples. Never claim personal experience or invent facts. Avoid SEO filler and repetitive prose. The slug must be lowercase ASCII with hyphens. Aim for roughly 1400-2100 Korean words only when supported by evidence.',
-    input: `Topic: ${JSON.stringify(topic)}\nResearch brief: ${JSON.stringify(research)}\nSources must use URLs from the research brief only.`
+    instructions: `Write a high-quality Korean practical article grounded only in the supplied research brief. ${audiencePrompt(topic.audienceSegment)} Start from the reader's concrete problem and desired outcome, not from product marketing. Add actionable steps, decision criteria, tradeoffs, limitations, cost/time considerations where supported, and failure modes. For non-developer audiences, avoid unnecessary code and explain setup in plain language. For developer audiences, preserve technical depth. Never claim personal experience or invent facts. Avoid SEO filler, repetitive prose, and fake precision. The slug must be lowercase ASCII with hyphens. Aim for roughly 1400-2100 Korean words only when evidence supports that depth.`,
+    input: `Topic and content strategy: ${JSON.stringify(topic)}\nResearch brief: ${JSON.stringify(research)}\nSources in the article must use URLs from the research brief only.`
   }));
   return data;
 }
@@ -284,7 +386,7 @@ async function qualityCheck(topic, bundle, article) {
   const { brief, documents, sourceMap } = bundle;
   const { data } = await runStage('qa', (ai) => ai({
     schema: qaSchema,
-    instructions: 'Act as an independent senior editor and fact checker. Verify every consequential claim against supplied evidence. Remove unsupported claims, fake precision, stale product details, SEO padding, weak explanations, or misleading monetization. Do not introduce new facts or URLs. Preserve useful depth. approved may be true only when the revised article is factually defensible and genuinely useful. For visualPlan, request a real photograph only when a photograph materially improves understanding of a real-world person, place, physical device, facility, event, or object. Do not request a photo for abstract software concepts, logos, UI screenshots, decorative stock imagery, charts, or concepts better explained by the generated infographic. When photoNeeded is true, photoSearchQuery must be a short English noun phrase suitable for Wikimedia Commons and must describe the real-world subject rather than a brand logo.',
+    instructions: `Act as an independent senior editor and fact checker. Verify every consequential claim against supplied evidence. Remove unsupported claims, fake precision, stale product details, SEO padding, weak explanations, misleading monetization, and jargon inappropriate for the target audience. Check that the article actually solves the stated readerProblem and is understandable for ${audienceLabel(topic.audienceSegment)}. Preserve useful depth. Do not introduce new facts or URLs. approved may be true only when the revised article is factually defensible, useful, and appropriately written for its audience. For visualPlan, request a real photograph only when a photograph materially improves understanding of a real-world person, place, physical device, facility, event, or object. Do not request a photo for abstract software concepts, logos, UI screenshots, decorative stock imagery, charts, or concepts better explained by the generated infographic. When photoNeeded is true, photoSearchQuery must be a short English noun phrase suitable for Wikimedia Commons and describe the real-world subject rather than a brand logo.`,
     input: `Date: ${today}\nMinimum passing score: ${config.content.minimumQualityScore}\nTopic: ${JSON.stringify(topic)}\nResearch: ${JSON.stringify(brief)}\nDraft: ${JSON.stringify(article)}\n\nPUBLIC EVIDENCE:\n${evidenceForPrompt(documents)}`
   }));
   return { ...data, verifiedSources: whitelistSources(data.verifiedSources, sourceMap) };
@@ -297,7 +399,7 @@ await mkdir(path.join(ROOT, 'data', 'media'), { recursive: true });
 
 const topic = await chooseTopic();
 if (duplicateKeyword(topic.primaryKeyword)) throw new Error(`Duplicate primary keyword: ${topic.primaryKeyword}`);
-console.log(`Selected: ${topic.topic} (${topic.opportunityScore}/100)`);
+console.log(`Selected: ${topic.topic} (${topic.opportunityScore}/100) · audience=${topic.audienceSegment} · role=${topic.contentRole}`);
 
 const researchBundle = await researchTopic(topic);
 console.log(`[research] final evidence documents: ${researchBundle.documents.length}`);
@@ -310,12 +412,12 @@ if (!qa.approved || qa.score < config.content.minimumQualityScore) {
 }
 if (qa.verifiedSources.length < 3) throw new Error('Quality review returned fewer than 3 whitelisted public sources.');
 if (duplicateTitle(qa.revisedTitle)) throw new Error(`Duplicate article title: ${qa.revisedTitle}`);
-const articleChars = qa.revisedSections.flatMap((s) => s.paragraphs || []).join('').length;
+const articleChars = qa.revisedSections.flatMap((section) => section.paragraphs || []).join('').length;
 if (articleChars < 3500) throw new Error(`Quality guard: final article is too thin (${articleChars} chars).`);
 
 let slug = slugify(article.slug || qa.revisedTitle);
 if (!slug) slug = `article-${today}`;
-if (posts.some((p) => p.slug === slug)) throw new Error(`Duplicate slug: ${slug}`);
+if (posts.some((post) => post.slug === slug)) throw new Error(`Duplicate slug: ${slug}`);
 
 const visualFiles = {
   cover: config.visuals?.generateCover ? `assets/posts/${slug}-cover.svg` : null,
@@ -345,7 +447,7 @@ if (commonsPhoto) {
   await writeFile(path.join(ROOT, 'data', 'media', `${slug}.json`), `${JSON.stringify(commonsPhoto, null, 2)}\n`);
 }
 
-const models = Object.fromEntries(Object.entries(config.localModel.stages).map(([k, v]) => [k, v.model]));
+const models = Object.fromEntries(Object.entries(config.localModel.stages).map(([key, value]) => [key, value.model]));
 const record = {
   title: qa.revisedTitle,
   slug,
@@ -354,6 +456,11 @@ const record = {
   tags: article.tags,
   date: today,
   primaryKeyword: topic.primaryKeyword,
+  audienceSegment: topic.audienceSegment,
+  contentRole: topic.contentRole,
+  monetizationRoute: topic.monetizationRoute,
+  readerProblem: topic.readerProblem,
+  expectedOutcome: topic.expectedOutcome,
   opportunityScore: topic.opportunityScore,
   qualityScore: qa.score,
   verificationSummary: qa.verificationSummary,
@@ -361,12 +468,19 @@ const record = {
   models,
   researchMode: 'free-public-web',
   visuals: config.visuals?.enabled ? visualFiles : null,
-  media: commonsPhoto ? { provider: commonsPhoto.provider, localPath: commonsPhoto.localPath, sourcePageUrl: commonsPhoto.sourcePageUrl, license: commonsPhoto.license, author: commonsPhoto.author } : null
+  media: commonsPhoto ? {
+    provider: commonsPhoto.provider,
+    localPath: commonsPhoto.localPath,
+    sourcePageUrl: commonsPhoto.sourcePageUrl,
+    license: commonsPhoto.license,
+    author: commonsPhoto.author
+  } : null
 };
 const nextPosts = [record, ...posts];
 
 await writeFile(path.join(ROOT, 'public', 'posts', `${slug}.html`), renderArticle({
   config,
+  topic,
   article,
   qa,
   monetization,
