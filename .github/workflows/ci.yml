@@ -15,7 +15,9 @@ jobs:
           node-version: 22
       - run: node --check src/ollama.mjs
       - run: node --check src/research.mjs
+      - run: node --check src/commons.mjs
       - run: node --check src/visuals.mjs
       - run: node --check src/render.mjs
       - run: node --check src/pipeline.mjs
+      - run: node scripts/test-commons-policy.mjs
       - run: npm run validate
