@@ -10,17 +10,12 @@ on:
     - cron: '30 22 * * *' # 07:30 Asia/Seoul
 permissions:
   contents: write
-  pages: write
-  id-token: write
 concurrency:
   group: blog-publisher
   cancel-in-progress: false
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Zero-cost guard
         run: |
@@ -73,11 +68,7 @@ jobs:
           fi
           git commit -m "chore(blog): publish automated article"
           git push
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: public
-      - id: deployment
-        uses: actions/deploy-pages@v4
-        with:
-          token: ${{ github.token }}
+      - name: Deployment handoff
+        run: |
+          echo "Content generation is complete."
+          echo "GitHub Pages deployment is handled by the separate 'Deploy Blog Pages' workflow."
