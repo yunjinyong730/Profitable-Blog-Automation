@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { renderArticle, renderIndex } from '../src/render.mjs';
 
 const config = {
@@ -55,7 +56,9 @@ for (const required of [
   'class="audience-grid"',
   'class="primary-nav"',
   'class="featured-grid"',
-  'class="skip-link"'
+  'class="skip-link"',
+  'aria-label="주요 메뉴"',
+  '<meta name="viewport"'
 ]) {
   if (!indexHtml.includes(required)) throw new Error(`Homepage design missing ${required}`);
 }
@@ -109,4 +112,25 @@ for (const required of [
 if (articleHtml.includes('Quality 94/100') || articleHtml.includes('Quality 94')) {
   throw new Error('Internal QA score must not be exposed as public trust UI.');
 }
-console.log('Design policy OK: content hub, scanability, trust metadata, TOC, semantic section styling, and mobile-friendly static structure verified.');
+
+const css = await readFile('public/styles.css', 'utf8');
+for (const required of [
+  '-webkit-text-size-adjust:100%',
+  '.skip-link:focus',
+  ':focus-visible',
+  'min-height:44px',
+  '@media(max-width:800px)',
+  '@media(max-width:480px)',
+  '@media(prefers-reduced-motion:reduce)',
+  '@media(prefers-contrast:more)',
+  '.site-header{position:static}',
+  '.audience-grid{grid-template-columns:1fr}',
+  '.featured-grid,.card-grid{grid-template-columns:1fr'
+]) {
+  if (!css.includes(required)) throw new Error(`Accessibility/mobile CSS policy missing ${required}`);
+}
+if (/\.hero h1\{[^}]*78px/.test(css)) throw new Error('Homepage hero typography regressed to oversized landing-page scale.');
+if (!css.includes('.hero-proof{display:none}')) throw new Error('Decorative SaaS-style proof card should stay hidden in the editorial redesign.');
+if (!css.includes('.card-cover{display:none}')) throw new Error('Homepage cards should remain text-first instead of repeating generated SVG covers.');
+
+console.log('Design policy OK: editorial layout, keyboard access, touch targets, responsive 320px-friendly layout, reduced motion, and higher-contrast preferences are enforced.');
