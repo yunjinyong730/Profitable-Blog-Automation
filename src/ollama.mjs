@@ -1,8 +1,10 @@
 import http from 'node:http';
+import { KOREAN_FIRST_SYSTEM_RULES, koreanLanguageIssues, koreanRepairInstruction } from './language.mjs';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const MAX_STRUCTURED_ATTEMPTS = 3;
 const MAX_DEPTH_REPAIR_ROUNDS = 2;
+const MAX_LANGUAGE_REPAIR_ROUNDS = 1;
 const DRAFT_MIN_PARAGRAPH_CHARS = 3000;
 const DRAFT_TARGET_PARAGRAPH_CHARS = 3800;
 const QA_MIN_PARAGRAPH_CHARS = 3500;
@@ -226,7 +228,7 @@ async function expandArticleDepth({ baseUrl, model, data, policy, originalInput,
         messages: [
           {
             role: 'system',
-            content: `You are a conservative senior editor performing append-only depth repair. Preserve the existing article. Add only evidence-grounded Korean paragraphs that increase practical usefulness. Return only JSON matching this schema exactly:\n${JSON.stringify(depthAdditionSchema)}`
+            content: `You are a conservative senior editor performing append-only depth repair. Preserve the existing article. Add only evidence-grounded Korean paragraphs that increase practical usefulness. ${KOREAN_FIRST_SYSTEM_RULES}\nReturn only JSON matching this schema exactly:\n${JSON.stringify(depthAdditionSchema)}`
           },
           {
             role: 'user',
@@ -338,6 +340,7 @@ export async function structuredResponse({
 }) {
   const started = Date.now();
   const depthPolicy = articleDepthPolicy(schema);
+  let languageRepairRounds = 0;
   const body = {
     model,
     stream: false,
@@ -345,7 +348,7 @@ export async function structuredResponse({
     keep_alive: '30s',
     format: schema,
     messages: [
-      { role: 'system', content: `${instructions}\nReturn only data matching this JSON schema exactly:\n${JSON.stringify(schema)}` },
+      { role: 'system', content: `${instructions}\n${KOREAN_FIRST_SYSTEM_RULES}\nReturn only data matching this JSON schema exactly:\n${JSON.stringify(schema)}` },
       { role: 'user', content: input }
     ],
     options: { temperature, num_ctx: contextWindow, num_predict: maxOutputTokens }
@@ -369,6 +372,24 @@ export async function structuredResponse({
       });
       const parsed = parseStructuredPayload(response, schema);
       let data = parsed.data;
+
+      const languageIssues = koreanLanguageIssues(schema, data);
+      if (languageIssues.length) {
+        console.warn(`[language] Korean-first policy failed: ${languageIssues.join(' | ')}`);
+        if (languageRepairRounds >= MAX_LANGUAGE_REPAIR_ROUNDS) {
+          const error = new Error(`Korean-first language policy still failed after automatic repair: ${languageIssues.join(' | ')}`);
+          error.code = 'KOREAN_LANGUAGE_POLICY';
+          throw error;
+        }
+        languageRepairRounds += 1;
+        console.warn(`[language] requesting automatic Korean-first repair ${languageRepairRounds}/${MAX_LANGUAGE_REPAIR_ROUNDS} before publication.`);
+        body.messages.push(
+          { role: 'assistant', content: parsed.text },
+          { role: 'user', content: koreanRepairInstruction(languageIssues) }
+        );
+        body.options.temperature = Math.min(body.options.temperature, 0.1);
+        continue;
+      }
 
       if (depthPolicy) {
         const initialChars = paragraphChars(data[depthPolicy.field]);
@@ -404,7 +425,7 @@ export async function structuredResponse({
       lastError = error;
       const elapsed = Math.round((Date.now() - attemptStarted) / 1000);
       console.warn(`[model] ${model} attempt ${attempt} failed after ${elapsed}s: ${error.code || error.name || 'Error'} ${error.message}`);
-      if (error.code === 'OLLAMA_REQUEST_TIMEOUT' || error.code === 'ARTICLE_DEPTH_SHORT' || attempt === MAX_STRUCTURED_ATTEMPTS) break;
+      if (error.code === 'OLLAMA_REQUEST_TIMEOUT' || error.code === 'ARTICLE_DEPTH_SHORT' || error.code === 'KOREAN_LANGUAGE_POLICY' || attempt === MAX_STRUCTURED_ATTEMPTS) break;
       const healthy = await ollamaHealthy(baseUrl);
       console.warn(`[model] Ollama health before retry: ${healthy ? 'ok' : 'unavailable'}`);
       if (!healthy) throw error;
