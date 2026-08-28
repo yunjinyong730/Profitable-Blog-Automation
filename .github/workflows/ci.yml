@@ -13,6 +13,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: node --check src/language.mjs
       - run: node --check src/ollama.mjs
       - run: node --check src/research.mjs
       - run: node --check src/commons.mjs
@@ -21,6 +22,7 @@ jobs:
       - run: node --check src/pipeline.mjs
       - run: node scripts/test-ollama-transport.mjs
       - run: node scripts/test-ollama-depth-repair.mjs
+      - run: node scripts/test-korean-language-policy.mjs
       - run: node scripts/test-commons-policy.mjs
       - run: node scripts/test-discovery-policy.mjs
       - run: node scripts/test-render-policy.mjs
