@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'public/**'
+      - 'brand-assets/**'
       - 'scripts/apply-brand.mjs'
       - 'scripts/test-brand-policy.mjs'
       - '.github/workflows/deploy-pages.yml'
