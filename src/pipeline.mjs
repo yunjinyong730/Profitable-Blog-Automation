@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { structuredResponse, ensureModel, removeModel } from './ollama.mjs';
 import { collectEvidence, buildDiscoveryQueries, evidenceForPrompt, allowedSourceMap, canonicalUrl } from './research.mjs';
+import { ensureResearchSourceDiversity } from './research-brief.mjs';
 import { fetchLicensedCommonsPhoto } from './commons.mjs';
 import { buildVisualAssets } from './visuals.mjs';
 import { renderArticle, renderFeed, renderIndex, renderSitemap } from './render.mjs';
@@ -354,23 +355,28 @@ async function researchTopic(topic) {
   const documents = await collectEvidence(queries, researchOptions);
   if (documents.length < 3) throw new Error(`Research found only ${documents.length} usable public sources; refusing to publish.`);
   const sourceMap = allowedSourceMap(documents);
-  const { data } = await runStage('research', (ai) => ai({
-    schema: researchSchema,
-    instructions: 'Create a rigorous research brief using only supplied evidence. Never invent URLs, claims, prices, dates, benchmarks, or personal experience. Every keyFact.sourceUrl must exactly match a supplied URL. Prefer first-party/project documentation for facts. Use community sources mainly for context and caveats. Explicitly identify uncertainty and focus on the target reader problem rather than generic product descriptions.',
-    input: `Date: ${today}\nTopic: ${JSON.stringify(topic)}\nTarget audience: ${audienceLabel(topic.audienceSegment)}\nReader guidance: ${audiencePrompt(topic.audienceSegment)}\n\nPUBLIC EVIDENCE:\n${evidenceForPrompt(documents)}`
-  }));
+  const evidenceText = evidenceForPrompt(documents);
+  const brief = await runStage('research', async (ai, stage) => {
+    const { data } = await ai({
+      schema: researchSchema,
+      instructions: 'Create a rigorous research brief using only supplied evidence. Never invent URLs, claims, prices, dates, benchmarks, or personal experience. Every keyFact.sourceUrl must exactly match a supplied URL. Across keyFacts, cite at least 3 distinct supplied sourceUrl values and aim for 4 when evidence supports it; do not let one source dominate before at least 3 sources are represented. Prefer first-party/project documentation for facts. Use community sources mainly for context and caveats. Explicitly identify uncertainty and focus on the target reader problem rather than generic product descriptions.',
+      input: `Date: ${today}\nTopic: ${JSON.stringify(topic)}\nTarget audience: ${audienceLabel(topic.audienceSegment)}\nReader guidance: ${audiencePrompt(topic.audienceSegment)}\n\nPUBLIC EVIDENCE:\n${evidenceText}`
+    });
 
-  const facts = [];
-  const urls = new Set();
-  for (const fact of data.keyFacts || []) {
-    const key = canonicalUrl(fact.sourceUrl);
-    const allowed = sourceMap.get(key);
-    if (!allowed) continue;
-    urls.add(key);
-    facts.push({ claim: fact.claim, sourceTitle: allowed.title, sourceUrl: allowed.url });
-  }
-  if (urls.size < 3) throw new Error(`Research brief cited only ${urls.size} whitelisted sources.`);
-  return { brief: { ...data, keyFacts: facts }, documents, sourceMap };
+    const diversified = await ensureResearchSourceDiversity({
+      ai,
+      brief: data,
+      topic,
+      sourceMap,
+      evidenceText,
+      minimumSources: 3,
+      repairMaxOutputTokens: Math.min(1400, stage.maxOutputTokens || 1400)
+    });
+    console.log(`[research] brief source coverage: ${diversified.sourceCount} distinct whitelisted sources${diversified.repaired ? ' after focused repair' : ''}.`);
+    return diversified.brief;
+  });
+
+  return { brief, documents, sourceMap };
 }
 
 async function writeArticle(topic, research) {
