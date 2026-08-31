@@ -13,7 +13,7 @@ const icons = {
 function heroHtml(html) {
   const secondaryHref = html.includes('id="launch"') ? '#launch' : '#commercial';
   const secondaryLabel = html.includes('id="launch"') ? '발행 준비 상태 보기' : 'AI 도구 비교 보기';
-  return `<section class="hero brand-hero" aria-labelledby="hero-title"><h1 id="hero-title" class="hero-sr-only">실무에 바로 쓰는 AI 자동화 가이드</h1><div class="brand-banner-image-wrap"><img class="brand-banner-image" src="./assets/brand/hero-banner.webp" width="2172" height="724" alt="실무에 바로 쓰는 AI 자동화. 업무 자동화, 비즈니스 자동화, AI 도구 활용법을 한눈에 소개하는 실무 가이드 배너" fetchpriority="high" decoding="async"></div><div class="hero-copy"><div class="hero-actions"><a class="button button-primary" href="#audiences">분야별 가이드 보기</a><a class="button button-secondary" href="${secondaryHref}">${secondaryLabel}</a></div></div></section>`;
+  return `<section class="hero brand-hero" aria-labelledby="hero-title"><h1 id="hero-title" class="hero-sr-only">실무에 바로 쓰는 AI 자동화 가이드</h1><div class="brand-banner-image-wrap"><img class="brand-banner-image" src="./assets/brand/hero-banner.avif" width="800" height="267" alt="실무에 바로 쓰는 AI 자동화. 업무 자동화, 비즈니스 자동화, AI 도구 활용법을 한눈에 소개하는 실무 가이드 배너" fetchpriority="high" decoding="async"></div><div class="hero-copy"><div class="hero-actions"><a class="button button-primary" href="#audiences">분야별 가이드 보기</a><a class="button button-secondary" href="${secondaryHref}">${secondaryLabel}</a></div></div></section>`;
 }
 
 function injectIcon(html, id) {
