@@ -1,14 +1,14 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 
 const html = await readFile('public/index.html', 'utf8');
 const css = await readFile('public/brand.css', 'utf8');
+const banner = await stat('public/assets/brand/hero-banner.webp');
 
 for (const required of [
-  'data-brand-patched="v3"',
-  'class="brand-banner"',
-  'class="brand-banner-art"',
-  '실무에 바로 쓰는',
-  'AI · 자동화',
+  'data-brand-patched="v4"',
+  'class="brand-banner-image"',
+  'src="./assets/brand/hero-banner.webp"',
+  'width="2172" height="724"',
   'href="./brand.css"',
   'data-audience-icon="knowledge-worker"',
   'data-audience-icon="small-business"',
@@ -19,16 +19,17 @@ for (const required of [
   if (!html.includes(required)) throw new Error(`Brand patch missing ${required}`);
 }
 
-if (html.includes('data:image/png;base64,')) throw new Error('Homepage banner must not rely on a base64 raster image anymore.');
-if (html.includes('class="hero-picture"')) throw new Error('Legacy picture banner should be removed.');
+if (banner.size < 20_000) throw new Error(`Generated banner asset looks unexpectedly small (${banner.size} bytes).`);
+if (html.includes('class="brand-banner-art"')) throw new Error('Legacy inline SVG hero art should be replaced by the generated banner image.');
+if (html.includes('data:image/png;base64,')) throw new Error('Homepage banner must use a repository asset, not a base64 payload.');
 
 const iconCount = (html.match(/data-audience-icon=/g) || []).length;
 if (iconCount !== 5) throw new Error(`Expected exactly 5 audience icons, found ${iconCount}`);
 
 for (const required of [
   '.hero::before{content:none!important',
-  '.brand-banner{display:grid',
-  '.brand-banner-art{display:block',
+  '.brand-banner-image{display:block',
+  'aspect-ratio:3/1',
   '.audience-card{display:grid!important',
   '.audience-icon{grid-area:icon',
   '@media(max-width:800px)',
@@ -37,4 +38,4 @@ for (const required of [
   if (!css.includes(required)) throw new Error(`Brand CSS missing ${required}`);
 }
 
-console.log('Brand policy OK: inline vector banner, five unified icons, and mobile layout are enforced without fragile image loading.');
+console.log('Brand policy OK: generated WebP hero banner, five unified icons, and responsive layout are enforced.');
