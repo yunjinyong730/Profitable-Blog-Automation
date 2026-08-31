@@ -42,8 +42,8 @@ function injectIcon(html, id) {
 await buildHighResBanner();
 
 let html = await readFile(target, 'utf8');
-html = html.replace(/\sdata-brand-patched="v[2345]"/g, '');
-html = html.replace('<body>', '<body data-brand-patched="v5">');
+html = html.replace(/\sdata-brand-patched="v[23456]"/g, '');
+html = html.replace('<body>', '<body data-brand-patched="v6">');
 
 if (!html.includes('href="./brand.css"')) {
   html = html.replace('</head>', '<link rel="stylesheet" href="./brand.css"></head>');
@@ -55,5 +55,9 @@ html = html.replace(heroPattern, heroHtml(html));
 
 for (const id of Object.keys(icons)) html = injectIcon(html, id);
 
+if (!html.includes('src="./interactions.js"')) {
+  html = html.replace('</body>', '<script src="./interactions.js" defer></script></body>');
+}
+
 await writeFile(target, html);
-console.log(`[brand] applied responsive high-resolution hero banner and ${Object.keys(icons).length} audience icons to ${target}`);
+console.log(`[brand] applied responsive high-resolution hero banner, interaction layer, and ${Object.keys(icons).length} audience icons to ${target}`);
