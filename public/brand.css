@@ -1,19 +1,9 @@
-/* Resilient homepage brand layer. Loaded after styles.css. */
+/* Homepage brand layer. Loaded after styles.css. */
 .hero::before{content:none!important;display:none!important;background:none!important}
 .hero{display:grid!important;grid-template-columns:1fr!important;overflow:hidden!important;background:#fff!important}
-.brand-banner{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);align-items:center;gap:20px;min-height:300px;padding:34px 42px;background:linear-gradient(135deg,#fff 0%,#fafafa 58%,#f1f1ef 100%);border-bottom:1px solid #e5e5e2}
-.brand-banner-copy{position:relative;z-index:2;max-width:570px}
-.brand-banner-overline{display:inline-flex;align-items:center;min-height:30px;padding:0 12px;border-radius:999px;background:#111;color:#fff;font-size:13px;font-weight:850;letter-spacing:-.01em}
-.brand-banner h1{position:static!important;width:auto!important;height:auto!important;margin:10px 0 12px!important;padding:0!important;overflow:visible!important;clip:auto!important;white-space:normal!important;border:0!important;font-size:clamp(48px,6vw,78px)!important;line-height:.98!important;letter-spacing:-.065em!important;font-weight:950!important;color:#090909!important}
-.brand-banner-lede{margin:0 0 9px;font-size:18px;font-weight:800;letter-spacing:-.025em;color:#222;line-height:1.45}
-.brand-banner-sub{margin:0;color:#666;font-size:14px;line-height:1.65}
-.brand-banner-topics{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
-.brand-banner-topics span{display:inline-flex;align-items:center;min-height:34px;padding:0 11px;border:1px solid #cacac7;border-radius:999px;background:rgba(255,255,255,.84);font-size:12px;font-weight:800;color:#333}
-.brand-banner-art{display:block;width:100%;height:auto;max-height:250px;overflow:visible}
-.brand-banner-art *{vector-effect:non-scaling-stroke}
-.banner-panel,.banner-card,.banner-bot,.banner-laptop{fill:#fff;stroke:#111;stroke-width:3}
-.banner-line{fill:none;stroke:#111;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-.banner-fill{fill:#111;stroke:none}.banner-fill-soft{fill:#dededb;stroke:#111;stroke-width:2}
+.hero-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+.brand-banner-image-wrap{width:100%;overflow:hidden;background:#fff;border-bottom:1px solid #e5e5e2}
+.brand-banner-image{display:block;width:100%;height:auto;aspect-ratio:3/1;object-fit:contain;background:#fff}
 .hero-copy{position:relative!important;display:block!important;padding:14px 16px 16px!important;border-top:0!important;background:#fff!important}
 .hero-actions{display:flex!important;flex-wrap:wrap!important;gap:8px!important;margin:0!important}
 
@@ -28,24 +18,15 @@
 .audience-count{grid-area:count!important;grid-column:auto!important}
 
 @media(max-width:800px){
-  .brand-banner{grid-template-columns:1fr;gap:12px;min-height:0;padding:28px 26px 24px}
-  .brand-banner-art{max-width:520px;margin:0 auto;max-height:210px}
-  .brand-banner h1{font-size:clamp(44px,11vw,66px)!important}
-  .brand-banner-lede{font-size:16px}
+  .brand-banner-image{width:100%;height:auto;aspect-ratio:3/1;object-fit:contain}
   .hero-actions{display:grid!important;grid-template-columns:1fr 1fr!important}
   .audience-card{grid-template-columns:72px minmax(0,1fr)!important;column-gap:15px!important;padding:18px!important;min-height:154px!important}
   .audience-icon{width:68px;height:68px;padding:8px;border-radius:17px}
 }
 
 @media(max-width:480px){
-  .brand-banner{padding:22px 18px 18px}
-  .brand-banner-overline{font-size:12px;min-height:28px}
-  .brand-banner h1{font-size:clamp(42px,14vw,58px)!important;margin-top:9px!important}
-  .brand-banner-lede{font-size:15px}
-  .brand-banner-sub{font-size:13px}
-  .brand-banner-topics{gap:6px;margin-top:15px}
-  .brand-banner-topics span{min-height:31px;padding:0 9px;font-size:11px}
-  .brand-banner-art{max-height:170px}
+  .brand-banner-image-wrap{overflow-x:hidden}
+  .brand-banner-image{width:100%;height:auto;min-height:0;object-fit:contain}
   .hero-copy{padding:10px!important}
   .hero-actions{grid-template-columns:1fr!important}
   .audience-card{grid-template-columns:60px minmax(0,1fr)!important;column-gap:13px!important;padding:16px!important;min-height:144px!important}
@@ -53,6 +34,5 @@
 }
 
 @media(prefers-contrast:more){
-  .brand-banner,.audience-icon{border-color:#555}
-  .brand-banner-topics span{border-color:#555}
+  .audience-icon{border-color:#555}
 }
