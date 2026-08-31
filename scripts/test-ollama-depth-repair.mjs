@@ -12,6 +12,13 @@ const sectionSchema = {
   required: ['heading', 'paragraphs', 'bullets']
 };
 
+const faqSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { question: { type: 'string' }, answer: { type: 'string' } },
+  required: ['question', 'answer']
+};
+
 const draftLikeSchema = {
   type: 'object',
   additionalProperties: false,
@@ -29,9 +36,10 @@ const qaLikeSchema = {
   properties: {
     revisedTitle: { type: 'string' },
     revisedDescription: { type: 'string' },
-    revisedSections: { type: 'array', minItems: 2, maxItems: 3, items: sectionSchema }
+    revisedSections: { type: 'array', minItems: 2, maxItems: 3, items: sectionSchema },
+    revisedFaq: { type: 'array', minItems: 1, maxItems: 2, items: faqSchema }
   },
-  required: ['revisedTitle', 'revisedDescription', 'revisedSections']
+  required: ['revisedTitle', 'revisedDescription', 'revisedSections', 'revisedFaq']
 };
 
 let primaryCalls = 0;
@@ -78,7 +86,12 @@ const server = http.createServer((req, res) => {
       { heading: '두 번째 섹션', paragraphs: [short], bullets: [] }
     ];
     const payload = requestBody.format?.properties?.revisedSections
-      ? { revisedTitle: '검증된 최종 제목', revisedDescription: '검증된 최종 설명을 충분한 한국어로 제공합니다.', revisedSections: sections }
+      ? {
+          revisedTitle: '검증된 최종 제목',
+          revisedDescription: '검증된 최종 설명을 충분한 한국어로 제공합니다.',
+          revisedSections: sections,
+          revisedFaq: [{ question: '이 테스트는 무엇을 확인하나요?', answer: '최종 글 길이와 한국어 품질 가드가 함께 유지되는지 확인합니다.' }]
+        }
       : { title: '테스트 초안', slug: 'test-draft', sections };
     res.end(JSON.stringify({
       message: { content: JSON.stringify(payload) },
