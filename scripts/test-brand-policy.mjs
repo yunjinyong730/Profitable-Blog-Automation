@@ -2,12 +2,13 @@ import { readFile, stat } from 'node:fs/promises';
 
 const html = await readFile('public/index.html', 'utf8');
 const css = await readFile('public/brand.css', 'utf8');
+const interactions = await readFile('public/interactions.js', 'utf8');
 const bannerPath = 'public/assets/brand/hero-banner-2048.avif';
 const banner = await stat(bannerPath);
 const bannerBytes = await readFile(bannerPath);
 
 for (const required of [
-  'data-brand-patched="v5"',
+  'data-brand-patched="v6"',
   'class="brand-banner-image-wrap"',
   '<picture>',
   'class="brand-banner-image"',
@@ -16,6 +17,7 @@ for (const required of [
   'sizes="(max-width: 800px) calc(100vw - 32px), 1200px"',
   'width="2048" height="682"',
   'href="./brand.css"',
+  'src="./interactions.js" defer',
   'data-audience-icon="knowledge-worker"',
   'data-audience-icon="small-business"',
   'data-audience-icon="freelancer"',
@@ -43,6 +45,12 @@ for (const required of [
   '.hero::before{content:none!important',
   '.brand-banner-image-wrap picture{display:block;width:100%}',
   '.brand-banner-image{display:block;width:100%;max-width:100%;height:auto;object-fit:contain',
+  '.brand-banner-image-wrap::after',
+  '.audience-card:hover',
+  '.primary-nav a::after',
+  '.effects-ready .reveal-target',
+  '@media(hover:none),(pointer:coarse)',
+  '@media(prefers-reduced-motion:reduce)',
   '.audience-card{display:grid!important',
   '.audience-icon{grid-area:icon',
   '@media(max-width:800px)',
@@ -51,6 +59,19 @@ for (const required of [
   if (!css.includes(required)) throw new Error(`Brand CSS missing ${required}`);
 }
 
+for (const required of [
+  "matchMedia('(prefers-reduced-motion: reduce)')",
+  "matchMedia('(hover: hover) and (pointer: fine)')",
+  "IntersectionObserver",
+  "root.classList.add('effects-ready')",
+  "classList.add('is-revealed')",
+  "window.addEventListener('scroll', updateHeader, { passive: true })",
+  "hero.addEventListener('pointermove'"
+]) {
+  if (!interactions.includes(required)) throw new Error(`Interaction layer missing ${required}`);
+}
+
+if (interactions.includes('setInterval(')) throw new Error('Interaction layer must not use continuous timers.');
 if (css.includes('aspect-ratio:3/1')) throw new Error('Banner CSS must preserve the source image ratio instead of forcing a low-resolution aspect box.');
 
-console.log(`Brand policy OK: responsive 2048x682 AVIF banner (${banner.size} bytes), five unified icons, and mobile layout are enforced.`);
+console.log(`Brand policy OK: responsive 2048x682 AVIF banner (${banner.size} bytes), five unified icons, subtle progressive interactions, reduced-motion support, and mobile layout are enforced.`);
