@@ -80,7 +80,7 @@ const server = http.createServer((req, res) => {
     }
 
     primaryCalls += 1;
-    const short = '짧지만 검증된 기존 본문입니다. '.repeat(35);
+    const short = '짧지만 검증된 기존 본문입니다. '.repeat(17);
     const sections = [
       { heading: '첫 번째 섹션', paragraphs: [short], bullets: [] },
       { heading: '두 번째 섹션', paragraphs: [short], bullets: [] }
@@ -117,7 +117,7 @@ try {
     contextWindow: 2048
   });
   const draftChars = draft.data.sections.flatMap((section) => section.paragraphs).join('').length;
-  if (draftChars < 1000) throw new Error(`Draft handoff did not clear 1000 chars: ${draftChars}.`);
+  if (draftChars >= 1000) throw new Error(`Fixture must exercise a sub-1000-char draft handoff, got ${draftChars}.`);
   if (draft.data.slug !== '') throw new Error('Draft handoff wrapper should synthesize an empty slug for downstream fallback.');
   if (repairCalls !== 0) throw new Error('Draft handoff must not spend an expensive qwen3:8b append-only repair call.');
 
@@ -125,6 +125,9 @@ try {
   if (draftRequest.format?.properties?.slug) throw new Error('Draft handoff schema still exposed slug and would trigger the legacy 3000-char depth policy.');
   if (!String(draftRequest.messages?.[0]?.content || '').includes('final 3500+ character publication requirement')) {
     throw new Error('Draft handoff instructions do not clearly delegate final depth to QA.');
+  }
+  if (!String(draftRequest.messages?.[0]?.content || '').includes('must still be handed to QA')) {
+    throw new Error('Draft handoff policy does not explicitly prevent short intermediate drafts from being discarded.');
   }
 
   const qa = await structuredResponse({
@@ -149,6 +152,9 @@ try {
   if (!String(qaPrimaryBody.messages?.[0]?.content || '').includes('target at least 3800 Korean characters')) {
     throw new Error('QA primary prompt is missing the explicit final-depth target.');
   }
+  if (!String(qaPrimaryBody.messages?.[0]?.content || '').includes('incoming draft is short')) {
+    throw new Error('QA prompt does not explicitly recover depth from research when the draft is short.');
+  }
 
   const repairBody = requestBodies.find((body) => body.format?.properties?.additions);
   if (!repairBody) throw new Error('No final QA append-only repair request was issued.');
@@ -160,7 +166,7 @@ try {
   const preserved = qa.data.revisedSections[0].paragraphs[0];
   if (!preserved.startsWith('짧지만 검증된 기존 본문입니다.')) throw new Error('Append-only QA repair rewrote the existing article instead of preserving it.');
 
-  console.log(`Draft handoff + final QA depth policy OK: draft=${draftChars} chars without 8B repair, QA=${qaChars} chars after guarded repair.`);
+  console.log(`Short draft handoff + final QA depth policy OK: draft=${draftChars} chars accepted without 8B repair, QA=${qaChars} chars after guarded repair.`);
 } finally {
   await new Promise((resolve) => server.close(resolve));
 }
