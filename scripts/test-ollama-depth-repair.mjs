@@ -27,9 +27,11 @@ const qaLikeSchema = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    revisedTitle: { type: 'string' },
+    revisedDescription: { type: 'string' },
     revisedSections: { type: 'array', minItems: 2, maxItems: 3, items: sectionSchema }
   },
-  required: ['revisedSections']
+  required: ['revisedTitle', 'revisedDescription', 'revisedSections']
 };
 
 let primaryCalls = 0;
@@ -70,13 +72,13 @@ const server = http.createServer((req, res) => {
     }
 
     primaryCalls += 1;
-    const short = '짧지만 검증된 기존 본문입니다. '.repeat(22);
+    const short = '짧지만 검증된 기존 본문입니다. '.repeat(35);
     const sections = [
       { heading: '첫 번째 섹션', paragraphs: [short], bullets: [] },
       { heading: '두 번째 섹션', paragraphs: [short], bullets: [] }
     ];
     const payload = requestBody.format?.properties?.revisedSections
-      ? { revisedSections: sections }
+      ? { revisedTitle: '검증된 최종 제목', revisedDescription: '검증된 최종 설명을 충분한 한국어로 제공합니다.', revisedSections: sections }
       : { title: '테스트 초안', slug: 'test-draft', sections };
     res.end(JSON.stringify({
       message: { content: JSON.stringify(payload) },
@@ -102,7 +104,15 @@ try {
     contextWindow: 2048
   });
   const draftChars = draft.data.sections.flatMap((section) => section.paragraphs).join('').length;
-  if (draftChars < 3000) throw new Error(`Draft append-only repair did not clear 3000 chars: ${draftChars}.`);
+  if (draftChars < 1000) throw new Error(`Draft handoff did not clear 1000 chars: ${draftChars}.`);
+  if (draft.data.slug !== '') throw new Error('Draft handoff wrapper should synthesize an empty slug for downstream fallback.');
+  if (repairCalls !== 0) throw new Error('Draft handoff must not spend an expensive qwen3:8b append-only repair call.');
+
+  const draftRequest = requestBodies[0];
+  if (draftRequest.format?.properties?.slug) throw new Error('Draft handoff schema still exposed slug and would trigger the legacy 3000-char depth policy.');
+  if (!String(draftRequest.messages?.[0]?.content || '').includes('final 3500+ character publication requirement')) {
+    throw new Error('Draft handoff instructions do not clearly delegate final depth to QA.');
+  }
 
   const qa = await structuredResponse({
     baseUrl,
@@ -118,20 +128,26 @@ try {
   if (qaChars < 3500) throw new Error(`QA append-only repair did not clear 3500 chars: ${qaChars}.`);
 
   if (primaryCalls !== 2) throw new Error(`Expected two primary generations, got ${primaryCalls}.`);
-  if (repairCalls !== 2) throw new Error(`Expected one append-only repair for draft and QA, got ${repairCalls}.`);
+  if (repairCalls !== 1) throw new Error(`Expected only one append-only repair for final QA, got ${repairCalls}.`);
+
+  const qaPrimaryBody = requestBodies.find((body) => body.format?.properties?.revisedSections);
+  if (!qaPrimaryBody) throw new Error('No QA primary request was issued.');
+  if ((qaPrimaryBody.options?.num_predict || 0) < 4000) throw new Error('QA primary output budget was not raised to support the 3500-char final requirement.');
+  if (!String(qaPrimaryBody.messages?.[0]?.content || '').includes('target at least 3800 Korean characters')) {
+    throw new Error('QA primary prompt is missing the explicit final-depth target.');
+  }
 
   const repairBody = requestBodies.find((body) => body.format?.properties?.additions);
-  if (!repairBody) throw new Error('No append-only repair request was issued.');
+  if (!repairBody) throw new Error('No final QA append-only repair request was issued.');
   const repairPrompt = repairBody.messages?.at(-1)?.content || '';
   if (!repairPrompt.includes('append-only') || !repairPrompt.includes('ORIGINAL INPUT') || !repairPrompt.includes('without rewriting or deleting existing text')) {
     throw new Error('Append-only repair prompt is missing preservation/evidence safeguards.');
   }
-  if ((repairBody.options?.num_predict || 0) < 4200) throw new Error('Append-only repair output budget was not raised enough.');
 
   const preserved = qa.data.revisedSections[0].paragraphs[0];
-  if (!preserved.startsWith('짧지만 검증된 기존 본문입니다.')) throw new Error('Append-only repair rewrote the existing article instead of preserving it.');
+  if (!preserved.startsWith('짧지만 검증된 기존 본문입니다.')) throw new Error('Append-only QA repair rewrote the existing article instead of preserving it.');
 
-  console.log(`Ollama append-only depth repair OK: draft=${draftChars} chars, QA=${qaChars} chars, existing text preserved.`);
+  console.log(`Draft handoff + final QA depth policy OK: draft=${draftChars} chars without 8B repair, QA=${qaChars} chars after guarded repair.`);
 } finally {
   await new Promise((resolve) => server.close(resolve));
 }
