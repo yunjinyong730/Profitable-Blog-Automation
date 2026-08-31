@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { structuredResponse } from '../src/ollama.mjs';
-import { KOREAN_FIRST_SYSTEM_RULES, koreanLanguageIssues } from '../src/language.mjs';
+import { KOREAN_FIRST_SYSTEM_RULES, koreanLanguageIssues, koreanTextStats } from '../src/language.mjs';
 
 const topicSchema = {
   type: 'object',
@@ -13,10 +13,11 @@ const topicSchema = {
         properties: {
           topic: { type: 'string' },
           primaryKeyword: { type: 'string' },
+          audienceSegment: { type: 'string' },
           readerProblem: { type: 'string' },
           expectedOutcome: { type: 'string' }
         },
-        required: ['topic', 'primaryKeyword', 'readerProblem', 'expectedOutcome']
+        required: ['topic', 'primaryKeyword', 'audienceSegment', 'readerProblem', 'expectedOutcome']
       }
     }
   },
@@ -27,24 +28,18 @@ const englishCandidate = {
   candidates: [{
     topic: 'Best AI coding tools for developers',
     primaryKeyword: 'AI coding tools',
+    audienceSegment: 'developer',
     readerProblem: 'Developers need to choose the right coding assistant',
     expectedOutcome: 'Better productivity and code quality'
   }]
 };
-const koreanCandidate = {
-  candidates: [{
-    topic: '개발자를 위한 AI 코딩 도구 비교와 선택 기준',
-    primaryKeyword: 'AI coding tools',
-    readerProblem: '개발자가 팀과 작업 방식에 맞는 AI 코딩 도구를 고르기 어렵다.',
-    expectedOutcome: 'GitHub Copilot과 Claude Code 같은 제품을 비교해 적합한 도구를 선택할 수 있다.'
-  }]
-};
 
-if (!koreanLanguageIssues(topicSchema, englishCandidate).length) {
-  throw new Error('English-first topic metadata should fail the Korean language policy.');
-}
-if (koreanLanguageIssues(topicSchema, koreanCandidate).length) {
-  throw new Error(`Korean-first metadata with English product/keyword terms should pass: ${koreanLanguageIssues(topicSchema, koreanCandidate).join(' | ')}`);
+const issues = koreanLanguageIssues(topicSchema, englishCandidate);
+if (issues.length) throw new Error(`Transient topic candidates must not hard-fail: ${issues.join(' | ')}`);
+const normalized = englishCandidate.candidates[0];
+if (normalized.primaryKeyword !== 'AI coding tools') throw new Error('Search keyword must stay unchanged during Korean normalization.');
+for (const field of ['topic', 'readerProblem', 'expectedOutcome']) {
+  if (koreanTextStats(normalized[field]).hangul < 3) throw new Error(`Selected-facing topic field was not normalized to Korean: ${field}`);
 }
 if (!KOREAN_FIRST_SYSTEM_RULES.includes('proper product/brand/model names')) {
   throw new Error('Korean-first system rules must preserve established product names.');
@@ -69,11 +64,11 @@ const badArticle = {
 };
 const badArticleIssues = koreanLanguageIssues(articleLikeSchema, badArticle);
 for (const field of ['article.title', 'article.description', 'article.category', 'article.tags', 'article.body', 'article.faq']) {
-  if (!badArticleIssues.some((issue) => issue.startsWith(field))) throw new Error(`Missing Korean guard for ${field}`);
+  if (!badArticleIssues.some((issue) => issue.startsWith(field))) throw new Error(`Missing Korean publication guard for ${field}`);
 }
 
 let chatCalls = 0;
-const requestBodies = [];
+let firstRequest;
 const server = http.createServer((req, res) => {
   if (req.url !== '/api/chat') {
     res.writeHead(404);
@@ -84,15 +79,19 @@ const server = http.createServer((req, res) => {
   req.setEncoding('utf8');
   req.on('data', (chunk) => { raw += chunk; });
   req.on('end', () => {
-    requestBodies.push(JSON.parse(raw));
+    firstRequest ||= JSON.parse(raw);
     chatCalls += 1;
-    const content = chatCalls === 1 ? englishCandidate : koreanCandidate;
+    const content = {
+      candidates: [{
+        topic: 'Best AI coding tools for developers',
+        primaryKeyword: 'AI coding tools',
+        audienceSegment: 'developer',
+        readerProblem: 'Developers need to choose the right coding assistant',
+        expectedOutcome: 'Better productivity and code quality'
+      }]
+    };
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({
-      message: { content: JSON.stringify(content) },
-      eval_count: 100,
-      total_duration: 1
-    }));
+    res.end(JSON.stringify({ message: { content: JSON.stringify(content) }, eval_count: 100, total_duration: 1 }));
   });
 });
 
@@ -110,15 +109,15 @@ try {
     contextWindow: 2048
   });
 
-  if (chatCalls !== 2) throw new Error(`Expected one automatic Korean repair, got ${chatCalls} calls.`);
-  if (koreanLanguageIssues(topicSchema, result.data).length) throw new Error('Automatic Korean repair did not clear the policy.');
-  const systemPrompt = requestBodies[0]?.messages?.[0]?.content || '';
-  if (!systemPrompt.includes('Korean-first publication language policy')) throw new Error('Korean-first system policy was not applied to the model call.');
-  const repairPrompt = requestBodies[1]?.messages?.at(-1)?.content || '';
-  if (!repairPrompt.includes('한국어 우선 언어 정책') || !repairPrompt.includes('새 사실')) {
-    throw new Error('Automatic Korean repair prompt is missing language/fact-preservation safeguards.');
+  if (chatCalls !== 1) throw new Error(`Topic discovery should no longer spend a second model call on whole-list translation; got ${chatCalls} calls.`);
+  const candidate = result.data.candidates[0];
+  if (candidate.primaryKeyword !== 'AI coding tools') throw new Error('Structured topic normalization changed the research keyword.');
+  for (const field of ['topic', 'readerProblem', 'expectedOutcome']) {
+    if (koreanTextStats(candidate[field]).hangul < 3) throw new Error(`Structured topic normalization failed for ${field}`);
   }
-  console.log('Korean-first language policy OK: English-first metadata is detected, repaired once, and product/keyword names may remain English.');
+  const systemPrompt = firstRequest?.messages?.[0]?.content || '';
+  if (!systemPrompt.includes('Korean-first publication language policy')) throw new Error('Korean-first system policy was not applied to the model call.');
+  console.log('Korean-first language policy OK: discovery candidates normalize locally without blocking, while article publication remains hard-gated.');
 } finally {
   await new Promise((resolve) => server.close(resolve));
 }
