@@ -20,6 +20,9 @@ jobs:
       - run: node --check src/visuals.mjs
       - run: node --check src/render.mjs
       - run: node --check src/pipeline.mjs
+      - run: node --check scripts/apply-brand.mjs
+      - run: node scripts/apply-brand.mjs
+      - run: node scripts/test-brand-policy.mjs
       - run: node scripts/test-ollama-transport.mjs
       - run: node scripts/test-ollama-depth-repair.mjs
       - run: node scripts/test-korean-language-policy.mjs
