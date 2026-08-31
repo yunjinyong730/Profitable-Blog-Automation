@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'public/**'
+      - 'scripts/apply-brand.mjs'
+      - 'scripts/test-brand-policy.mjs'
       - '.github/workflows/deploy-pages.yml'
   workflow_run:
     workflows: ['Automated Blog Publisher']
@@ -28,6 +30,10 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: main
+      - name: Apply resilient homepage brand
+        run: |
+          node scripts/apply-brand.mjs
+          node scripts/test-brand-policy.mjs
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact
