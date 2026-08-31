@@ -50,7 +50,7 @@ export async function structuredResponse(args) {
     }
     return {
       ...result,
-      data: { slug: '', ...result.data }
+      data: { ...result.data, slug: '' }
     };
   }
 
