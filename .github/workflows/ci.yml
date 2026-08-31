@@ -14,6 +14,7 @@ jobs:
         with:
           node-version: 22
       - run: node --check src/language.mjs
+      - run: node --check src/ollama-base.mjs
       - run: node --check src/ollama.mjs
       - run: node --check src/research.mjs
       - run: node --check src/research-brief.mjs
