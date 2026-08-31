@@ -10,24 +10,10 @@ const icons = {
   developer: `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="6" y="11" width="42" height="33" rx="6"/><path d="M6 19h42M17 28l-5 5 5 5M34 28l5 5-5 5M28 26l-4 14"/><rect x="40" y="36" width="18" height="19" rx="5"/><path d="M45 42h8M49 38v-5M49 55v4M40 45h-4M58 45h4M45 50h8"/></svg>`
 };
 
-const heroArt = `<svg class="brand-banner-art" viewBox="0 0 560 250" aria-hidden="true">
-  <rect x="300" y="28" width="164" height="105" rx="14" class="banner-panel"/>
-  <path d="M320 102V73h20v29m12 0V58h20v44m12 0V43h20v59" class="banner-line"/>
-  <path d="m317 68 25-17 22 9 34-28" class="banner-line"/><path d="m392 32 8-1-2 8" class="banner-line"/>
-  <rect x="86" y="48" width="154" height="110" rx="39" class="banner-bot"/>
-  <circle cx="126" cy="100" r="8" class="banner-fill"/><circle cx="198" cy="100" r="8" class="banner-fill"/>
-  <path d="M132 123c18 14 42 14 60 0" class="banner-line"/>
-  <path d="M163 48V31m-10 0h20" class="banner-line"/><circle cx="163" cy="25" r="7" class="banner-fill"/>
-  <path d="M64 183h221l28 38H38z" class="banner-laptop"/><circle cx="176" cy="202" r="8" class="banner-fill"/>
-  <rect x="332" y="158" width="164" height="64" rx="14" class="banner-card"/>
-  <path d="m351 177 6 6 11-14M377 177h93M351 201l6 6 11-14M377 201h75" class="banner-line"/>
-  <circle cx="506" cy="54" r="12" class="banner-fill-soft"/><path d="M500 54h12M506 48v12" class="banner-line"/>
-</svg>`;
-
 function heroHtml(html) {
   const secondaryHref = html.includes('id="launch"') ? '#launch' : '#commercial';
   const secondaryLabel = html.includes('id="launch"') ? '발행 준비 상태 보기' : 'AI 도구 비교 보기';
-  return `<section class="hero brand-hero" aria-labelledby="hero-title"><div class="brand-banner"><div class="brand-banner-copy"><span class="brand-banner-overline">실무에 바로 쓰는</span><h1 id="hero-title">AI · 자동화</h1><p class="brand-banner-lede">업무 자동화, 비즈니스 자동화, AI 도구 활용법을 한눈에</p><p class="brand-banner-sub">복잡한 설명보다 실제로 시간을 줄이고 성과를 만드는 가이드</p><div class="brand-banner-topics"><span>업무 자동화</span><span>비즈니스 자동화</span><span>AI 도구</span></div></div>${heroArt}</div><div class="hero-copy"><div class="hero-actions"><a class="button button-primary" href="#audiences">분야별 가이드 보기</a><a class="button button-secondary" href="${secondaryHref}">${secondaryLabel}</a></div></div></section>`;
+  return `<section class="hero brand-hero" aria-labelledby="hero-title"><h1 id="hero-title" class="hero-sr-only">실무에 바로 쓰는 AI 자동화 가이드</h1><div class="brand-banner-image-wrap"><img class="brand-banner-image" src="./assets/brand/hero-banner.webp" width="2172" height="724" alt="실무에 바로 쓰는 AI 자동화. 업무 자동화, 비즈니스 자동화, AI 도구 활용법을 한눈에 소개하는 실무 가이드 배너" fetchpriority="high" decoding="async"></div><div class="hero-copy"><div class="hero-actions"><a class="button button-primary" href="#audiences">분야별 가이드 보기</a><a class="button button-secondary" href="${secondaryHref}">${secondaryLabel}</a></div></div></section>`;
 }
 
 function injectIcon(html, id) {
@@ -40,20 +26,18 @@ function injectIcon(html, id) {
 }
 
 let html = await readFile(target, 'utf8');
-html = html.replace(/\sdata-brand-patched="v2"/g, '').replace(/\sdata-brand-patched="v3"/g, '');
-html = html.replace('<body>', '<body data-brand-patched="v3">');
+html = html.replace(/\sdata-brand-patched="v[234]"/g, '');
+html = html.replace('<body>', '<body data-brand-patched="v4">');
 
 if (!html.includes('href="./brand.css"')) {
   html = html.replace('</head>', '<link rel="stylesheet" href="./brand.css"></head>');
 }
 
-const heroPattern = /<section class="hero"[^>]*>[\s\S]*?<\/section>/;
-const brandedHeroPattern = /<section class="hero brand-hero"[^>]*>[\s\S]*?<\/section>/;
-if (brandedHeroPattern.test(html)) html = html.replace(brandedHeroPattern, heroHtml(html));
-else if (heroPattern.test(html)) html = html.replace(heroPattern, heroHtml(html));
-else throw new Error('Could not find homepage hero section for brand patch.');
+const heroPattern = /<section class="hero(?: brand-hero)?"[^>]*>[\s\S]*?<\/section>/;
+if (!heroPattern.test(html)) throw new Error('Could not find homepage hero section for brand patch.');
+html = html.replace(heroPattern, heroHtml(html));
 
 for (const id of Object.keys(icons)) html = injectIcon(html, id);
 
 await writeFile(target, html);
-console.log(`[brand] applied resilient inline banner and ${Object.keys(icons).length} audience icons to ${target}`);
+console.log(`[brand] applied generated hero banner and ${Object.keys(icons).length} audience icons to ${target}`);
