@@ -1,11 +1,21 @@
 export const KOREAN_FIRST_SYSTEM_RULES = `Korean-first publication language policy:
-- All reader-facing prose and metadata must be primarily natural Korean, including article/topic titles, descriptions, categories, general-purpose tags, reader problems/outcomes, section headings, body paragraphs, FAQ text, and editorial summaries.
+- All reader-facing prose and metadata must be primarily natural Korean, including article titles, descriptions, categories, general-purpose tags, reader problems/outcomes, section headings, body paragraphs, FAQ text, and editorial summaries.
+- Topic-discovery candidate lists are internal working data. Search keywords and evidence-derived candidate wording may remain in English during ranking; candidate reader-facing fields are normalized to Korean before they leave the topic stage.
 - Keep proper product/brand/model names, API names, code identifiers, commands, URLs, and technical tokens in their established original spelling when useful (for example ChatGPT, Claude, GitHub Copilot, n8n, RAG, API).
 - Source titles may remain in their original language. slug and URL fields must not be translated. photoSearchQuery may remain English because it is used for Wikimedia Commons search.
 - A Korean-first title may contain English brand terms, but it must not be an English sentence with only token Korean decoration.
 - Prefer Korean equivalents for generic concepts when they are clear and natural; do not awkwardly transliterate ordinary English prose.`;
 
 const count = (value, pattern) => (String(value || '').match(pattern) || []).length;
+
+const AUDIENCE_LABELS = {
+  'knowledge-worker': '직장인·지식근로자',
+  'small-business': '소규모 사업자',
+  freelancer: '프리랜서·1인 사업자',
+  creator: '콘텐츠 제작자',
+  developer: '개발자·AI 실무자',
+  general: '일반 독자'
+};
 
 export function koreanTextStats(value) {
   const text = String(value || '');
@@ -17,6 +27,11 @@ export function koreanTextStats(value) {
     latin,
     share: letters ? hangul / letters : 0
   };
+}
+
+function koreanEnough(value, { minHangul, minShare }) {
+  const stats = koreanTextStats(value);
+  return stats.hangul >= minHangul && stats.share >= minShare;
 }
 
 function checkText(issues, label, value, { minHangul, minShare }) {
@@ -62,19 +77,50 @@ function qaIssues(data) {
   return issues;
 }
 
-function topicIssues(data) {
-  const issues = [];
-  for (const [index, candidate] of (data.candidates || []).entries()) {
-    checkText(issues, `topic.candidates[${index}].topic`, candidate.topic, { minHangul: 3, minShare: 0.18 });
-    checkText(issues, `topic.candidates[${index}].readerProblem`, candidate.readerProblem, { minHangul: 5, minShare: 0.30 });
-    checkText(issues, `topic.candidates[${index}].expectedOutcome`, candidate.expectedOutcome, { minHangul: 5, minShare: 0.30 });
-  }
-  return issues;
+export function koreanizeSelectedTopic(candidate, audienceLabel = AUDIENCE_LABELS[candidate?.audienceSegment] || '일반 독자') {
+  const keyword = String(candidate?.primaryKeyword || candidate?.topic || 'AI 자동화').trim();
+  const originalTopic = String(candidate?.topic || '').trim();
+  const originalProblem = String(candidate?.readerProblem || '').trim();
+  const originalOutcome = String(candidate?.expectedOutcome || '').trim();
+
+  const topic = koreanEnough(originalTopic, { minHangul: 3, minShare: 0.16 })
+    ? originalTopic
+    : `${audienceLabel}을 위한 ${keyword} 실전 활용 가이드`;
+  const readerProblem = koreanEnough(originalProblem, { minHangul: 5, minShare: 0.28 })
+    ? originalProblem
+    : `${audienceLabel}가 ${keyword}를 실제 업무에 적용할 때 무엇을 선택하고 어떻게 시작해야 하는지 판단하기 어렵다.`;
+  const expectedOutcome = koreanEnough(originalOutcome, { minHangul: 5, minShare: 0.28 })
+    ? originalOutcome
+    : `${keyword}의 적합한 활용 방식과 선택 기준, 실행 단계를 한국어로 이해하고 실제 업무에 적용할 수 있다.`;
+
+  return {
+    ...candidate,
+    topic,
+    readerProblem,
+    expectedOutcome
+  };
+}
+
+function normalizeTopicCandidatesInPlace(data) {
+  if (!Array.isArray(data?.candidates)) return;
+  data.candidates = data.candidates.map((candidate) => {
+    const normalized = koreanizeSelectedTopic(candidate);
+    if (normalized.topic !== candidate.topic || normalized.readerProblem !== candidate.readerProblem || normalized.expectedOutcome !== candidate.expectedOutcome) {
+      console.warn(`[language] normalized transient topic candidate for Korean readers: ${candidate.primaryKeyword || candidate.topic || 'unknown keyword'}`);
+    }
+    return normalized;
+  });
 }
 
 export function koreanLanguageIssues(schema, data) {
   const properties = schema?.properties || {};
-  if (properties.candidates) return topicIssues(data);
+  // Discovery candidates are transient ranking data, not published copy. Requiring a small
+  // local model to rewrite 5-10 complete candidates caused unnecessary pipeline failures.
+  // Normalize only the reader-facing candidate fields while preserving search keywords.
+  if (properties.candidates) {
+    normalizeTopicCandidatesInPlace(data);
+    return [];
+  }
   if (properties.revisedTitle && properties.revisedDescription && properties.revisedSections) return qaIssues(data);
   if (properties.title && properties.description && properties.category && properties.sections) return articleIssues(data);
   return [];

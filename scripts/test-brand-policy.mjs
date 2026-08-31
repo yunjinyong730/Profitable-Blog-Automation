@@ -4,9 +4,11 @@ const html = await readFile('public/index.html', 'utf8');
 const css = await readFile('public/brand.css', 'utf8');
 
 for (const required of [
-  'data-brand-patched="v2"',
-  'class="hero-picture"',
-  'data:image/png;base64,',
+  'data-brand-patched="v3"',
+  'class="brand-banner"',
+  'class="brand-banner-art"',
+  '실무에 바로 쓰는',
+  'AI · 자동화',
   'href="./brand.css"',
   'data-audience-icon="knowledge-worker"',
   'data-audience-icon="small-business"',
@@ -17,14 +19,16 @@ for (const required of [
   if (!html.includes(required)) throw new Error(`Brand patch missing ${required}`);
 }
 
+if (html.includes('data:image/png;base64,')) throw new Error('Homepage banner must not rely on a base64 raster image anymore.');
+if (html.includes('class="hero-picture"')) throw new Error('Legacy picture banner should be removed.');
+
 const iconCount = (html.match(/data-audience-icon=/g) || []).length;
 if (iconCount !== 5) throw new Error(`Expected exactly 5 audience icons, found ${iconCount}`);
-if (!html.includes('<source media="(max-width: 700px)"')) throw new Error('Responsive mobile banner source is missing.');
-if (!html.includes('width="900" height="300"')) throw new Error('Desktop banner intrinsic dimensions are missing.');
 
 for (const required of [
   '.hero::before{content:none!important',
-  '.hero-picture img{aspect-ratio:3/1',
+  '.brand-banner{display:grid',
+  '.brand-banner-art{display:block',
   '.audience-card{display:grid!important',
   '.audience-icon{grid-area:icon',
   '@media(max-width:800px)',
@@ -33,4 +37,4 @@ for (const required of [
   if (!css.includes(required)) throw new Error(`Brand CSS missing ${required}`);
 }
 
-console.log('Brand policy OK: embedded responsive banner, five unified icons, and mobile layout are enforced.');
+console.log('Brand policy OK: inline vector banner, five unified icons, and mobile layout are enforced without fragile image loading.');
