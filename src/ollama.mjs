@@ -6,7 +6,7 @@ import {
 
 export { ensureModel, removeModel };
 
-const DRAFT_HANDOFF_MIN_PARAGRAPH_CHARS = 1000;
+const DRAFT_HANDOFF_WARN_PARAGRAPH_CHARS = 1000;
 const DRAFT_HANDOFF_TARGET_PARAGRAPH_CHARS = 2200;
 const QA_PRIMARY_TARGET_PARAGRAPH_CHARS = 3800;
 
@@ -39,14 +39,13 @@ export async function structuredResponse(args) {
     const result = await baseStructuredResponse({
       ...args,
       schema: draftHandoffSchema(args.schema),
-      instructions: `${args.instructions}\n\nDraft handoff policy: This is the evidence-grounded working draft, not the final published article. Build a complete 5-9 section structure and aim for about ${DRAFT_HANDOFF_TARGET_PARAGRAPH_CHARS} Korean paragraph characters total, normally with 2-3 substantive paragraphs in important sections. Prioritize supported reasoning, decision criteria, actionable steps, limitations, and trade-offs over filler. Do not spend another generation merely padding the draft: the independent QA stage owns the final 3500+ character publication requirement.`
+      instructions: `${args.instructions}\n\nDraft handoff policy: This is the evidence-grounded working draft, not the final published article. Build a complete 5-9 section structure and aim for about ${DRAFT_HANDOFF_TARGET_PARAGRAPH_CHARS} Korean paragraph characters total, normally with 2-3 substantive paragraphs in important sections. Prioritize supported reasoning, decision criteria, actionable steps, limitations, and trade-offs over filler. Do not spend another generation merely padding the draft: the independent QA stage owns the final 3500+ character publication requirement. A short but structurally valid draft must still be handed to QA rather than discarded solely for length.`
     });
     const chars = paragraphChars(result.data.sections);
-    console.log(`[quality] draft handoff depth=${chars} paragraph chars (handoff minimum ${DRAFT_HANDOFF_MIN_PARAGRAPH_CHARS}; final QA minimum remains 3500)`);
-    if (chars < DRAFT_HANDOFF_MIN_PARAGRAPH_CHARS) {
-      const error = new Error(`Draft handoff is structurally too thin (${chars} < ${DRAFT_HANDOFF_MIN_PARAGRAPH_CHARS} paragraph chars).`);
-      error.code = 'DRAFT_HANDOFF_TOO_THIN';
-      throw error;
+    if (chars < DRAFT_HANDOFF_WARN_PARAGRAPH_CHARS) {
+      console.warn(`[quality] draft handoff depth=${chars} paragraph chars is below the ${DRAFT_HANDOFF_WARN_PARAGRAPH_CHARS}-char advisory target; accepting the structurally valid draft and delegating final depth to QA (hard final minimum remains 3500).`);
+    } else {
+      console.log(`[quality] draft handoff depth=${chars} paragraph chars; final QA minimum remains 3500.`);
     }
     return {
       ...result,
@@ -58,7 +57,7 @@ export async function structuredResponse(args) {
     return baseStructuredResponse({
       ...args,
       maxOutputTokens: Math.max(Number(args.maxOutputTokens) || 0, 4000),
-      instructions: `${args.instructions}\n\nFinal publication depth policy: revisedSections is the final reader-facing article, not a summary of the draft. Preserve factual discipline while expanding supported explanations, concrete decision criteria, implementation steps, caveats, and trade-offs so the revised section paragraphs target at least ${QA_PRIMARY_TARGET_PARAGRAPH_CHARS} Korean characters in the primary QA response. The hard publication minimum remains 3500 paragraph characters and must never be bypassed with filler or unsupported claims.`
+      instructions: `${args.instructions}\n\nFinal publication depth policy: revisedSections is the final reader-facing article, not a summary of the draft. Preserve factual discipline while expanding supported explanations, concrete decision criteria, implementation steps, caveats, and trade-offs so the revised section paragraphs target at least ${QA_PRIMARY_TARGET_PARAGRAPH_CHARS} Korean characters in the primary QA response. The hard publication minimum remains 3500 paragraph characters and must never be bypassed with filler or unsupported claims. If the incoming draft is short, reconstruct sufficient depth from the supplied research and public evidence rather than rejecting it merely for being brief.`
     });
   }
 
