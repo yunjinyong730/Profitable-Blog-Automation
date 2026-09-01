@@ -5,7 +5,10 @@ on:
     branches: [main]
     paths:
       - 'public/**'
+      - 'data/**'
       - 'brand-assets/**'
+      - 'scripts/editorial-polish.mjs'
+      - 'scripts/live-overrides.mjs'
       - 'scripts/apply-brand.mjs'
       - 'scripts/test-brand-policy.mjs'
       - '.github/workflows/deploy-pages.yml'
@@ -31,6 +34,10 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: main
+      - name: Apply editorial polish
+        run: |
+          node scripts/editorial-polish.mjs
+          node scripts/live-overrides.mjs
       - name: Apply resilient homepage brand
         run: |
           node scripts/apply-brand.mjs
