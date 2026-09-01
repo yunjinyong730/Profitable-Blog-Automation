@@ -1,6 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
 const replacements = [
+  ['Practical AI &amp; Automation', 'AI로 일하는 법'],
+  ['Practical AI & Automation', 'AI로 일하는 법'],
   [
     '소규모 사업자를 위한 CRM 자동화 실전 활용 가이드: 효율적인 도입 전략 및 단계별 실행',
     '소규모 사업자의 CRM 자동화, 어디서부터 시작해야 할까?'
@@ -11,7 +13,7 @@ const replacements = [
   ]
 ];
 
-for (const file of ['public/posts/crm.html', 'public/index.html', 'public/feed.xml']) {
+for (const file of ['public/posts/crm.html', 'public/index.html', 'public/feed.xml', 'public/disclosure.html', 'public/privacy.html']) {
   try {
     let text = await readFile(file, 'utf8');
     for (const [from, to] of replacements) text = text.replaceAll(from, to);
@@ -19,4 +21,4 @@ for (const file of ['public/posts/crm.html', 'public/index.html', 'public/feed.x
   } catch {}
 }
 
-console.log('[editorial] applied current published title/description overrides.');
+console.log('[editorial] applied current published title/description/site-name overrides.');
