@@ -106,7 +106,7 @@ const server = http.createServer((req, res) => {
       qaPrimaryCalls += 1;
       const wantsExpansion = String(requestBody.messages?.at(-1)?.content || '').includes('TRIGGER_EXPANSION');
       const paragraph = '핵심 판단 기준을 먼저 설명하는 검증된 본문입니다. '.repeat(12);
-      const usefulBullet = '실제 적용에서는 현재 업무의 입력과 출력, 담당자, 예외 상황을 먼저 적어 두면 자동화 도구를 고르기 전에 무엇을 바꿔야 하는지가 보입니다. 근거에 없는 기능이나 성과를 덧붙이지 않고, 사람이 확인해야 할 지점과 자동으로 처리해도 되는 지점을 분리해서 작은 범위부터 검증하는 편이 안전합니다. '.repeat(4);
+      const usefulBullet = '실제 적용에서는 현재 업무의 입력과 출력, 담당자, 예외 상황을 먼저 적어 두면 자동화 도구를 고르기 전에 무엇을 바꿔야 하는지가 보입니다. 근거에 없는 기능이나 성과를 덧붙이지 않고, 사람이 확인해야 할 지점과 자동으로 처리해도 되는 지점을 분리해서 작은 범위부터 검증하는 편이 안전합니다. '.repeat(5);
       const sections = wantsExpansion
         ? [
             { heading: '현재 업무부터 살펴보기', paragraphs: [paragraph], bullets: [] },
